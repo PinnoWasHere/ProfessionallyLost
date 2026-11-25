@@ -1,0 +1,37 @@
+name: Release
+
+# Builds ProfessionallyLost-<tag>.zip with the BigWigs packager from a pushed v* tag and uploads it to
+# CurseForge (project id in the toc, token in the CF_API_KEY secret). The zip is also kept as a
+# workflow artifact. Packaging rules live in .pkgmeta.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -n "{package-name}-{project-version}"
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+
+      - name: Keep the zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProfessionallyLost-zip
+          path: .release/*.zip
+          include-hidden-files: true
+          if-no-files-found: error

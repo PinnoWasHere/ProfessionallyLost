@@ -1,0 +1,4 @@
+<Bindings>
+    <!-- Enchant again: casts the Guide tab's current enchant on the matching equipped item, then confirms the replace dialog. -->
+    <Binding name="CLICK ProfLost_EnchantAgain:LeftButton" header="PROFLOST" category="ADDONS"/>
+</Bindings>

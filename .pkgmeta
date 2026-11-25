@@ -1,0 +1,18 @@
+package-as: ProfessionallyLost
+
+# The packager treats the repo root as the package, so the addon first lands in
+# ProfessionallyLost/ProfessionallyLost/. The move lifts it to the zip's top folder, where
+# CHANGELOG.md and API.md already sit beside the toc.
+move-folders:
+  ProfessionallyLost/ProfessionallyLost: ProfessionallyLost
+
+ignore:
+  - CONTRIBUTING.md
+  - LICENSE
+  - README.md
+  - tests
+  - tools
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown

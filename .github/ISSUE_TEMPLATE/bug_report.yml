@@ -1,0 +1,27 @@
+name: Bug report
+description: Something in Professionally Lost broke or acts wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Type `/proflost bug` in game, copy the report, and paste it below.
+  - type: textarea
+    id: report
+    attributes:
+      label: Bug report
+      description: The text from `/proflost bug`.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshots
+      description: Optional. Drag a screenshot here if it shows the problem.

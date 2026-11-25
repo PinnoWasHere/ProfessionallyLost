@@ -1,0 +1,116 @@
+{
+  "_about": [
+    "Leaks the --orders leak watch excuses (tests/world/leakwatch.lua).",
+    "An entry excuses a line when every field it gives matches: test (the leaking file's path ends with it),",
+    "state (the key or a key below it; 'global X' for a global), file and code (a frame of a queued timer in that",
+    "file whose source line holds code). Each needs a reason and state or file. An entry nothing matches in a",
+    "full run (every file, every order) fails that run. 'fix job owed' marks a real leak waiting for its fix."
+  ],
+  "allow": [
+    {
+      "file": "ProfessionallyLost/Engine/GatherGuide.lua",
+      "code": "slice(j) end)",
+      "reason": "A slice of a stopped job returns at once (slice: job ~= j), and World.finish stops the job after every test."
+    },
+    {
+      "file": "ProfessionallyLost/Engine/Farm.lua",
+      "code": "slice(j) end)",
+      "reason": "The farm job's next slice; a live job also shows as CP.Farm.Warming(), and a stale slice returns at once (job ~= j)."
+    },
+    {
+      "file": "ProfessionallyLost/Engine/Peers.lua",
+      "code": "if gen == S.gen then askNext(sender) end",
+      "reason": "A peer request's timeout, ASK_WAIT + 1 = 301 s later and guarded by the peer generation; no test advances that far."
+    },
+    {
+      "file": "ProfessionallyLost/Engine/Peers.lua",
+      "code": "Peers.Yell(gen) end)",
+      "reason": "The next yell, 60 s to 30 min later and guarded by the peer generation."
+    },
+    {
+      "file": "ProfessionallyLost/Engine/Peers.lua",
+      "code": "C_Timer.After(Peers.LOGIN_DELAY, function()",
+      "reason": "The login hello, 15 s later and guarded by the peer generation."
+    },
+    {
+      "file": "ProfessionallyLost/Engine/Peers.lua",
+      "code": "C_Timer.After(Peers.ARRIVE_DELAY, function()",
+      "reason": "The zone-arrival digest ask, 10 s later and guarded by the generation and the arrival token."
+    },
+    {
+      "file": "ProfessionallyLost/Pricing/Scan.lua",
+      "code": "C_Timer.After(delay, function()",
+      "reason": "A scan step guarded by the scan token and state; it returns at once once the scan ends."
+    },
+    {
+      "file": "ProfessionallyLost/UI/Style.lua",
+      "code": "C_Timer.NewTicker(Style.FADE_STEP",
+      "reason": "A fade still running; it sets one region's alpha and stops at its end value."
+    },
+    {
+      "file": "ProfessionallyLost/UI/Style.lua",
+      "code": "C_Timer.NewTicker(Style.PULSE, function()",
+      "reason": "A row's pulse runs for as long as the row pulses, by design; it only fades alpha."
+    },
+    {
+      "file": "ProfessionallyLost/UI/Style.lua",
+      "code": "C_Timer.NewTicker(Style.PULSE, ownedStep)",
+      "reason": "The owned-row pulse driver runs while owned rows exist, by design; it only fades alpha."
+    },
+    {
+      "file": "ProfessionallyLost/Libs/HereBeDragons/HereBeDragons-2.0.lua",
+      "code": "C_Timer.After(1, UpdateTimerCallback)",
+      "reason": "HereBeDragons' own position update timer, a library loop."
+    },
+    {
+      "file": "ProfessionallyLost/UI/VendorWatch.lua",
+      "code": "C_Timer.After(delay, function()",
+      "reason": "fix job owed: a vendor rescan 1 s after a bag or merchant event runs in whichever test next advances the clock."
+    },
+    {
+      "file": "ProfessionallyLost/Core/Init.lua",
+      "code": "C_Timer.After(0, function()",
+      "reason": "fix job owed: CP:Soon work (refreshes, redraws) queued at a test's end runs in the next test that advances the clock."
+    },
+    {
+      "file": "ProfessionallyLost/Core/Init.lua",
+      "code": "C_Timer.After(quiet, check)",
+      "reason": "fix job owed: CP:Later work queued at a test's end runs in the next test that advances the clock."
+    },
+    {
+      "file": "ProfessionallyLost/UI/GatherList.lua",
+      "code": "C_Timer.After(PULSE_SECONDS + 0.1, function()",
+      "reason": "fix job owed: the find pulse's end redraws the route header 20 s later, inside a later test."
+    },
+    {
+      "file": "ProfessionallyLost/UI/GatherList.lua",
+      "code": "C_Timer.After(1, function()",
+      "reason": "fix job owed: a gathering replan 1 s after a level-up runs inside a later test."
+    },
+    {
+      "file": "ProfessionallyLost/UI/GatherList.lua",
+      "code": "C_Timer.After(1, levelled)",
+      "reason": "fix job owed: the level-up recount 1 s later runs inside a later test."
+    },
+    {
+      "file": "ProfessionallyLost/UI/Window.lua",
+      "code": "Window.Follow(\"next frame\")",
+      "reason": "fix job owed: the trade skill follow a frame after its event runs inside a later test."
+    },
+    {
+      "file": "ProfessionallyLost/UI/Window.lua",
+      "code": "C_Timer.After(0, function()",
+      "reason": "fix job owed: the craft window's landing pick a frame after its event runs inside a later test."
+    },
+    {
+      "test": "tests/headless/idle_test.lua",
+      "state": "global C_Timer.NewTicker",
+      "reason": "fix job owed: idle_test wraps C_Timer.NewTicker at file load and never puts it back."
+    },
+    {
+      "test": "tests/headless/gather_test.lua",
+      "state": "CP.RouteMap drawn zone",
+      "reason": "fix job owed: gather_test leaves the route map drawn for zone 1413; the next file that redraws it clears it."
+    }
+  ]
+}

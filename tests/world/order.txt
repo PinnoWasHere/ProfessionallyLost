@@ -1,0 +1,14 @@
+tests/fixtures/items.lua
+tests/fixtures/maps.lua
+tests/world/init.lua
+tests/world/craftworld.lua
+tests/world/vendorworld.lua
+tests/world/solves.lua
+tests/world/mapworld.lua
+tests/world/gatherworld.lua
+tests/world/ahworld.lua
+tests/world/daylightworld.lua
+tests/world/mogulworld.lua
+tests/world/peerworld.lua
+tests/world/visual.lua
+tests/world/leakwatch.lua

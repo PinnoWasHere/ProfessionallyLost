@@ -1,0 +1,99 @@
+## Interface: 16001
+## Title: |cff1fb5a6P|r|cff23b6a3r|r|cff28b7a0o|r|cff2cb79df|r|cff31b899e|r|cff35b996s|r|cff39ba93s|r|cff3ebb90i|r|cff42bb8do|r|cff47bc8an|r|cff4bbd87a|r|cff4fbe83l|r|cff54bf80l|r|cff58bf7dy|r |cff5dc07aL|r|cff61c177o|r|cff65c274s|r|cff6ac371t|r |cff6fc36e(|r|cff76c26bD|r|cff7dc168a|r|cff83c065y|r|cff8abf62l|r|cff90be5fi|r|cff97bd5cg|r|cff9ebd59h|r|cffa4bc56t|r|cffabbb53U|r|cffb2ba50I|r |cffb8b94dP|r|cffbfb84bl|r|cffc5b748u|r|cffccb745g|r|cffd3b642i|r|cffd9b53fn|r|cffe0b43c)|r
+## Notes: Profession leveling guides and a shopping list in one movable window, with a Gathering window beside it.
+## Author: PinnoWasHere
+## Version: 1.6.0
+## IconTexture: Interface\AddOns\ProfessionallyLost\Media\Icon
+## AddonCompartmentFunc: ProfLost_Open
+## AddonCompartmentFuncOnEnter: ProfLost_OnEnter
+## AddonCompartmentFuncOnLeave: ProfLost_OnLeave
+## SavedVariables: ProfLostDB
+## SavedVariablesPerCharacter: ProfLostCharDB
+## Dependencies: DaylightUI
+## Category: DaylightUI Plugins
+## Group: ProfessionallyLost
+## X-Curse-Project-ID: 1809195
+## OptionalDeps: DaylightMogul, DaylightUI_Chat, DaylightUI_Skins, GatherMate2, GatherMate2_Data, Mapzeroth
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
+Libs\HereBeDragons\HereBeDragons-2.0.lua
+Libs\HereBeDragons\HereBeDragons-Pins-2.0.lua
+
+Core\Guard.lua
+Core\Init.lua
+Core\Settings.lua
+Core\Professions.lua
+Core\Changes.lua
+Engine\Fallback.lua
+Engine\Guide.lua
+Engine\Solver.lua
+Engine\Queue.lua
+Engine\Waypoint.lua
+Engine\Mapz.lua
+Engine\Sourcing.lua
+Engine\Gather.lua
+Engine\Finds.lua
+Engine\GatherMate.lua
+Engine\Purchases.lua
+Engine\Disenchant.lua
+Engine\Terrain.lua
+Engine\Route.lua
+Engine\Fishing.lua
+Engine\GatherGuide.lua
+Engine\Farm.lua
+Engine\Shared.lua
+Engine\Deskill.lua
+Engine\Peers.lua
+Engine\Impromptu.lua
+Engine\Trip.lua
+Pricing\Provider.lua
+Pricing\Scan.lua
+
+Data\Guides\Alchemy.lua
+Data\Guides\Blacksmithing.lua
+Data\Guides\Cooking.lua
+Data\Guides\Enchanting.lua
+Data\Guides\Engineering.lua
+Data\Guides\FirstAid.lua
+Data\Guides\Leatherworking.lua
+Data\Guides\Tailoring.lua
+Data\Gather.lua
+Data\Lanes.lua
+Data\SiteZones.lua
+Data\Disenchant.lua
+
+UI\Style.lua
+UI\Host.lua
+UI\Panel.lua
+UI\Plan.lua
+UI\Crafting.lua
+UI\PatternLearn.lua
+UI\CraftRows.lua
+UI\VendorWatch.lua
+UI\Buying.lua
+UI\RouteLines.lua
+UI\RouteMap.lua
+UI\GatherList.lua
+UI\MapButton.lua
+UI\UnitTooltip.lua
+UI\ItemTooltip.lua
+UI\NeededMarks.lua
+UI\Launcher.lua
+UI\EnchantAgain.lua
+UI\GuideTab.lua
+UI\ShopTab.lua
+UI\ScanButton.lua
+UI\GatherPanel.lua
+UI\DisenchantTab.lua
+UI\BugReport.lua
+UI\Window.lua
+UI\API.lua
+UI\Tour.lua
+UI\Look.lua
+UI\LookCheck.lua
+UI\Preview.lua
+UI\Plugin.lua
+UI\News.lua

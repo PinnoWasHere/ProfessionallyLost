@@ -1,0 +1,31 @@
+name: Wrong guide data
+description: A recipe, vendor, trainer, pattern or location in the guide is wrong.
+labels: [data]
+body:
+  - type: input
+    id: profession
+    attributes:
+      label: Profession
+      placeholder: Tailoring
+    validations:
+      required: true
+  - type: textarea
+    id: wrong
+    attributes:
+      label: What the guide says
+      description: The step, recipe, item, vendor or place, and the skill level where you saw it.
+    validations:
+      required: true
+  - type: textarea
+    id: right
+    attributes:
+      label: What is right
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Where this comes from
+      description: An in-game check, a screenshot, or a database page.
+    validations:
+      required: true

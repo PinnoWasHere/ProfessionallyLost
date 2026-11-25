@@ -1,0 +1,5 @@
+# BigWigs packager output
+/.release/
+
+# Python
+__pycache__/
