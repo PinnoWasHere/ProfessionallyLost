@@ -269,7 +269,7 @@ return {
     framexml = {
         -- name = true when it returns a value. Sources: Blizzard_StaticPopup, Blizzard_ChatFrame,
         -- Blizzard_UIParent, Blizzard_FrameXMLUtil, Blizzard_MailFrame (InboxFrame_OnModifiedClick
-        -- is in the cache too), SecureStateDriver.
+        -- is in the cache too), SecureStateDriver, Blizzard_GameMenuEsc (ToggleGameMenu).
         functions = {
         ChatFrame_AddMessageEventFilter = false,
         CloseMenus = false,
@@ -284,6 +284,7 @@ return {
         StaticPopup_FindVisible = true,
         StaticPopup_Hide = false,
         StaticPopup_Show = true,
+        ToggleGameMenu = false,
         },
         -- owner = { member = returns }. Only members the addon and its tests name. Sources:
         -- Blizzard_Menu (MenuUtil), Blizzard_Settings (Settings), Blizzard_ObjectAPI, Blizzard_MapCanvas,

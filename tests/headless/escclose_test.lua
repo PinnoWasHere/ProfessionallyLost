@@ -1,6 +1,6 @@
 -- Escape closes the guide window and the detached gathering panel like their close buttons,
--- unless the window's padlock is shut. The harness has no CloseSpecialWindows, so
--- `escape` does what the game does: hide each shown frame named in UISpecialFrames.
+-- unless the window's padlock is shut. Only the player's Escape closes them: the game's own
+-- CloseAllWindows (entering the world, /reload, a loading screen) leaves them open.
 
 local CP = ProfLost
 local W, P, GP = CP.Window, CP.Panel, CP.GatherPanel
@@ -37,11 +37,26 @@ local function scene()
     T.ok(GP.sheet:IsVisible(), "the detached gathering panel")
 end
 
-local function escape()
+-- The game's CloseSpecialWindows: hides each shown frame named in UISpecialFrames. The
+-- game runs it from CloseAllWindows on entering the world, as well as on Escape.
+local function closeSpecial()
     for _, name in ipairs(UISpecialFrames) do
         local f = _G[name]
         if f and f:IsShown() then f:Hide() end
     end
+end
+
+-- The player's Escape: ToggleGameMenu runs the Escape handlers, CloseAllWindows among them
+-- (Blizzard_GameMenuEsc), then its post-hooks.
+local function escape()
+    closeSpecial()
+    ToggleGameMenu()
+end
+
+-- Entering the world: the game closes every special frame, then PLAYER_ENTERING_WORLD.
+local function enterWorld(login, reload)
+    closeSpecial()
+    T.fire("PLAYER_ENTERING_WORLD", login, reload)
 end
 
 local function click(b) b:GetScript("OnClick")(b) end
@@ -84,4 +99,47 @@ T.test("the detached panel has a Daylight UI close button that closes it", funct
     click(GP.closeButton)
     T.ok(not GP.sheet:IsVisible(), "closed")
     T.eq(CP.db.gatherPanelClosed, true)
+end)
+
+T.test("a loading screen, /reload or login leaves both windows open; Escape still closes them", function()
+    scene()
+    for _, how in ipairs({ { false, false }, { false, true }, { true, false } }) do
+        enterWorld(how[1], how[2])
+        T.ok(P.frame:IsShown(), "the guide stays open")
+        T.ok(GP.sheet:IsVisible(), "the gathering panel stays open")
+        T.eq(CP.db.windowClosed, nil, "nothing saved as closed")
+        T.eq(CP.db.gatherPanelClosed, nil, "nothing saved as closed")
+        T.advance(0.1)
+    end
+    escape()
+    T.ok(not P.frame:IsShown(), "the player's Escape closes the guide")
+    T.ok(not GP.sheet:IsVisible(), "and the panel")
+    T.eq(CP.db.windowClosed, true)
+    T.eq(CP.db.gatherPanelClosed, true)
+end)
+
+-- A static popup or a menu takes the Escape before CloseAllWindows runs.
+T.test("Escape taken by something else after a loading screen closes nothing", function()
+    scene()
+    enterWorld(false, false)
+    T.advance(0.1)
+    T.ok(W.escFrame:IsShown() and W.gatherEscFrame:IsShown(), "the stand-ins are back up")
+    ToggleGameMenu()
+    T.ok(P.frame:IsShown() and GP.sheet:IsVisible(), "the loading screen's hide is not taken as Escape")
+    T.eq(CP.db.windowClosed, nil)
+    T.eq(CP.db.gatherPanelClosed, nil)
+end)
+
+-- Alt+Z hides UIParent: each shown child gets OnHide but stays shown itself. The harness
+-- doesn't pass a parent's hide down, so the test runs the stand-ins' OnHide as the game does.
+T.test("the whole UI hidden and shown again (Alt+Z) leaves both windows open", function()
+    scene()
+    for _, f in ipairs({ W.escFrame, W.gatherEscFrame }) do
+        T.ok(f:IsShown(), "the stand-in is up")
+        f:GetScript("OnHide")(f)
+    end
+    T.advance(0.1)
+    T.ok(P.frame:IsShown() and GP.sheet:IsVisible(), "both open")
+    T.eq(CP.db.windowClosed, nil)
+    T.eq(CP.db.gatherPanelClosed, nil)
 end)
