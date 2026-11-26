@@ -306,7 +306,8 @@ T.test("placed on the real map, it moves off a button found in a layer on the co
         rect(dice, 110, 210, 136, 236)          -- 10,10 in, 26 wide
         World.set(layer, "GetChildren", function() return dice end)
         World.set(corner, "GetChildren", function() return layer end)
-        World.set(WorldMapFrame, "GetChildren", function() end)
+        -- where the map has no ScrollContainer the container is the map itself: keep its layer
+        if corner ~= WorldMapFrame then World.set(WorldMapFrame, "GetChildren", function() end) end
         World.set(b, "GetEffectiveScale", function() return 1 end)
         MB.Place()
         local _, _, _, x, y = b:GetPoint(1)
