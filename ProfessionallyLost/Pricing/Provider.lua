@@ -4,21 +4,26 @@ if CP.stopped then return end
 -- Material prices in copper. Order: a vendor that always stocks the item, then the
 -- auction price, then the item's vendor list price as a rough estimate.
 --
--- The auction price comes from the first source in `config.order` that prices the item:
--- DaylightMogul, Daylight UI's Auction House (DaylightUI.AuctionPrices), Auctionator
--- (its public v1 API), ProfLost's own scan (Scan.lua), then Glowey's Recipes (its public
--- DaylightRecipes.API). Each addon is looked up at call time, so one that publishes late
--- or switches off is followed.
+-- The game lets one addon scan the auction house at a time, so the player picks one price
+-- addon (config.choices, saved per account in CP.db.priceSource). Its sources are read
+-- first and the rest fill gaps in `config.order`: DaylightMogul, Daylight UI's Auction House
+-- (DaylightUI.AuctionPrices), Auctionator (its public v1 API), TSM (TSM_API), Auctioneer
+-- (AucAdvanced.API), ProfLost's own scan (Scan.lua), then Glowey's Recipes (its public
+-- DaylightRecipes.API). With no pick saved, or a pick whose addon isn't loaded, the order
+-- alone decides. Each addon is looked up at call time, so one that publishes late or
+-- switches off is followed.
 
 local Pricing = {}
 CP.Pricing = Pricing
 
 Pricing.config = {
-    order = { "mogul", "daylight", "auctionator", "scan", "glowey" },
+    order = { "mogul", "daylight", "auctionator", "tsm", "auctioneer", "scan", "glowey" },
     names = {
         mogul = "DaylightMogul",
         daylight = "Daylight UI's Auction House",
         auctionator = "Auctionator",
+        tsm = "TSM",
+        auctioneer = "Auctioneer",
         scan = "ProfLost's scan",
         glowey = "Glowey's Recipes",
     },
@@ -26,10 +31,33 @@ Pricing.config = {
     caller = "ProfessionallyLost",   -- Auctionator's callerID
     day = 86400,                     -- Auctionator ages its prices in whole days
 
+    -- TSM_API price strings, tried in turn: its market value, then its lowest buyout.
+    tsmSources = { "DBMarket", "DBMinBuyout" },
+    tsmItem = "i:%d",                -- TSM's item string for a plain item
+    auctioneerItem = "item:%d",      -- Auctioneer reads a link; a bare id needs the item cached
+
+    -- What the player picks from, in the options' order. `reads`: the sources read first.
+    -- `folders`: the addon folders that count it as installed.
+    choices = {
+        { key = "tsm", label = "TSM", name = "TSM", reads = { "tsm" }, folders = { "TradeSkillMaster" } },
+        { key = "auctioneer", label = "Auctioneer", name = "Auctioneer", reads = { "auctioneer" },
+          folders = { "Auc-Advanced" } },
+        { key = "auctionator", label = "Auctionator", name = "Auctionator", reads = { "auctionator" },
+          folders = { "Auctionator" } },
+        { key = "daylight", label = "Daylight UI", name = "Daylight UI", reads = { "mogul", "daylight" },
+          folders = { "DaylightMogul", "DaylightUI_AuctionHouse" } },
+        { key = "glowey", label = "Glowey's Recipes", name = "Glowey's Recipes", reads = { "glowey" },
+          folders = { "DaylightRecipes" } },
+        { key = "scan", label = "ProfLost's own scan", name = "ProfLost", reads = { "scan" } },
+    },
+
     -- Staple materials: any one priced means a source with no count of its own has data.
     staples = { 2589, 2592, 4306, 2770, 2771, 2318, 2319, 2447, 765, 2835 },
 }
 local config = Pricing.config
+
+local choiceBy = {}
+for _, c in ipairs(config.choices) do choiceBy[c.key] = c end
 
 local function now() return GetServerTime and GetServerTime() or time() end
 
@@ -65,6 +93,19 @@ local function glowey()
     local g = rawget(_G, "DaylightRecipes")
     local api = type(g) == "table" and g.API
     return type(api) == "table" and type(api.Price) == "function" and api or nil
+end
+
+-- TSM's public API while it is loaded.
+local function tsm()
+    local t = rawget(_G, "TSM_API")
+    return type(t) == "table" and type(t.GetCustomPriceValue) == "function" and t or nil
+end
+
+-- Auctioneer's public API while it is loaded.
+local function auctioneer()
+    local a = rawget(_G, "AucAdvanced")
+    local api = type(a) == "table" and a.API
+    return type(api) == "table" and type(api.GetMarketValue) == "function" and api or nil
 end
 
 -- Each source has present(), price(id) -> copper and its age in seconds (nil when the
@@ -111,6 +152,31 @@ sources.auctionator = {
     end,
 }
 
+-- TSM keeps no age per item.
+sources.tsm = {
+    present = function() return tsm() ~= nil end,
+    price = function(id)
+        local api = tsm()
+        if not api then return nil end
+        local item = config.tsmItem:format(id)
+        for _, src in ipairs(config.tsmSources) do
+            local price = positive(pcall(api.GetCustomPriceValue, src, item))
+            if price then return price end
+        end
+        return nil
+    end,
+}
+
+-- Auctioneer's market value. Its second answer counts sightings, not time, so no age.
+sources.auctioneer = {
+    present = function() return auctioneer() ~= nil end,
+    price = function(id)
+        local api = auctioneer()
+        if not api then return nil end
+        return (positive(pcall(api.GetMarketValue, config.auctioneerItem:format(id))))
+    end,
+}
+
 sources.scan = {
     present = function() return CP.Scan ~= nil end,
     price = function(id)
@@ -150,27 +216,171 @@ local function holdsData(src)
     return false
 end
 
--- The auction price, its source key and its age in seconds, from the first source that
--- prices the item.
-local function auctionPrice(itemID)
+-- The player's pick ------------------------------------------------------------------
+
+local readsFirst = {}   -- choice key -> { [source key] = true }
+for _, c in ipairs(config.choices) do
+    readsFirst[c.key] = {}
+    for _, key in ipairs(c.reads) do readsFirst[c.key][key] = true end
+end
+
+local function pcallOk(ok, ...) if ok then return ... end end
+
+-- True when the game lists the addon folder as loaded, or present and switched on for this
+-- character, so it answers before that addon loads.
+local function folderOn(folder)
+    local A = rawget(_G, "C_AddOns")
+    if type(A) ~= "table" then return false end
+    if type(A.IsAddOnLoaded) == "function" and pcallOk(pcall(A.IsAddOnLoaded, folder)) then return true end
+    if type(A.DoesAddOnExist) ~= "function" or type(A.GetAddOnEnableState) ~= "function" then return false end
+    if not pcallOk(pcall(A.DoesAddOnExist, folder)) then return false end
+    local guid = type(UnitGUID) == "function" and pcallOk(pcall(UnitGUID, "player")) or nil
+    local state = type(guid) == "string" and pcallOk(pcall(A.GetAddOnEnableState, folder, guid)) or nil
+    if type(state) ~= "number" then state = pcallOk(pcall(A.GetAddOnEnableState, folder)) end
+    return type(state) == "number" and state > 0
+end
+
+function Pricing.Choices() return config.choices end
+function Pricing.ChoiceInfo(key) return choiceBy[key] end
+
+-- The saved pick, or nil.
+function Pricing.Choice()
+    local key = CP.db and CP.db.priceSource
+    return choiceBy[key] and key or nil
+end
+
+-- True while choice `key`'s addon is loaded and readable now.
+function Pricing.Present(key)
+    local c = choiceBy[key]
+    if not c then return false end
+    for _, s in ipairs(c.reads) do
+        if sources[s].present() then return true end
+    end
+    return false
+end
+
+-- True when choice `key`'s addon is loaded or the game lists it as switched on.
+function Pricing.Installed(key)
+    local c = choiceBy[key]
+    if not c then return false end
+    if Pricing.Present(key) then return true end
+    for _, folder in ipairs(c.folders or {}) do
+        if folderOn(folder) then return true end
+    end
+    return false
+end
+
+-- The best choice loaded now, by `config.order`. ProfLost's scan stands ahead of every
+-- source after it.
+function Pricing.Best()
     for _, key in ipairs(config.order) do
-        local src = sources[key]
-        if src.present() then
-            local price, age = src.price(itemID)
+        if sources[key].present() then
+            for _, c in ipairs(config.choices) do
+                if readsFirst[c.key][key] then return c.key end
+            end
+        end
+    end
+    return "scan"
+end
+
+-- The choice whose switch shows on: the saved pick, else the best loaded now.
+function Pricing.Selected()
+    return Pricing.Choice() or Pricing.Best()
+end
+
+-- The pick read first: the saved one while its addon is loaded, else nil (the order alone).
+function Pricing.Active()
+    local key = Pricing.Choice()
+    if key and Pricing.Present(key) then return key end
+    return nil
+end
+
+-- The saved pick's name while its addon isn't loaded, so prices come from the order alone.
+function Pricing.FellBack()
+    local key = Pricing.Choice()
+    if key and not Pricing.Present(key) then return choiceBy[key].name end
+    return nil
+end
+
+-- True while ProfLost's own scan is the one to run: picked, or nothing picked and nothing
+-- ahead of it holds prices.
+function Pricing.ScanChosen()
+    local key = Pricing.Active()
+    if key then return key == "scan" end
+    return Pricing.AddonSource() == nil
+end
+
+-- Saves choice `key`. Prices re-rank, and the options page redraws so the old switch shows off.
+function Pricing.Choose(key)
+    if not (choiceBy[key] and CP.db) then return false end
+    if CP.db.priceSource == key then return true end
+    CP.db.priceSource = key
+    Pricing.Changed()
+    if CP.Plugin and CP.Plugin.RefreshOptions then CP.Plugin.RefreshOptions() end
+    return true
+end
+
+-- The note under the switches.
+function Pricing.ChoiceNote()
+    local gone = Pricing.FellBack()
+    if gone then
+        local _, name = Pricing.AddonSource()
+        return ("%s isn't loaded, so prices come from %s first."):format(gone, name or config.names.scan)
+    end
+    local c = choiceBy[Pricing.Selected()]
+    if c.key == "scan" then return "ProfLost scans at the auction house. Other addons' prices fill gaps." end
+    return ("Prices come from %s first. Other addons' prices fill gaps."):format(c.name)
+end
+
+-- Prices ---------------------------------------------------------------------------
+
+local function from(key, itemID)
+    local src = sources[key]
+    if not src.present() then return nil end
+    return src.price(itemID)
+end
+
+-- The auction price, its source key and its age in seconds: the pick's sources first, then
+-- the first other source in the order that prices the item.
+local function auctionPrice(itemID)
+    local active = Pricing.Active()
+    local first = active and readsFirst[active]
+    if first then
+        for _, key in ipairs(choiceBy[active].reads) do
+            local price, age = from(key, itemID)
+            if price then return price, key, age end
+        end
+    end
+    for _, key in ipairs(config.order) do
+        if not (first and first[key]) then
+            local price, age = from(key, itemID)
             if price then return price, key, age end
         end
     end
     return nil
 end
 
--- The first addon ahead of ProfLost's scan in the order that holds prices: its key and
--- name, or nil. Addons after the scan only fill what it lacks.
+-- The addon whose prices come first: its source key and name, or nil for ProfLost's scan.
+-- With a pick loaded, the pick. Else the first addon ahead of ProfLost's scan in the order
+-- that holds prices; addons after the scan only fill what it lacks.
 function Pricing.AddonSource()
+    local active = Pricing.Active()
+    if active == "scan" then return nil end
+    if active then
+        for _, key in ipairs(choiceBy[active].reads) do
+            if sources[key].present() then return key, config.names[key] end
+        end
+    end
     for _, key in ipairs(config.order) do
         if key == "scan" then return nil end
         if holdsData(sources[key]) then return key, config.names[key] end
     end
     return nil
+end
+
+-- True when source `key` holds any price now.
+function Pricing.HoldsData(key)
+    return sources[key] ~= nil and holdsData(sources[key])
 end
 
 -- True once any source holds a price for this realm and faction.
@@ -192,7 +402,7 @@ function Pricing.AuctionFrom(itemID)
 end
 
 -- Seconds since the winning source saw the item's price. Nil when that source gives no
--- age (DaylightMogul) or there is no price.
+-- age (DaylightMogul, TSM, Auctioneer) or there is no price.
 function Pricing.AuctionAge(itemID)
     return (select(3, auctionPrice(itemID)))
 end
@@ -247,10 +457,10 @@ end
 
 CP:On("PLAYER_LOGIN", function() Pricing.Listen() end)
 
--- An Auctionator without its update callback: its prices count as new once the auction
--- house closes.
+-- Auctioneer, and an Auctionator without its update callback, say nothing when their
+-- prices move: those count as new once the auction house closes.
 CP:On("AUCTION_HOUSE_CLOSED", function()
-    if not auctionatorHeard and auctionator() then Pricing.Changed() end
+    if (not auctionatorHeard and auctionator()) or auctioneer() then Pricing.Changed() end
 end)
 
 -- `guideItem` is the guide's { vendorPrice, soldByVendor } entry for the item.

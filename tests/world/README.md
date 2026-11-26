@@ -24,6 +24,8 @@ the worlds it needs, plays a scene against them and checks what ProfLost did.
 | `duiahworld.lua` | `DUIAHWorld` | Mock of `DaylightUI.AuctionPrices` (API 1.15): Item, ScannedAt, CUT, the AuctionPricesChanged event, absent under DaylightMogul |
 | `auctionatorworld.lua` | `AuctionatorWorld` | Mock of `Auctionator.API.v1`: GetAuctionPriceByItemID, GetAuctionAgeByItemID, RegisterForDBUpdate |
 | `gloweyworld.lua` | `GloweyWorld` | Mock of Glowey's Recipes as ProfLost reads it: `DaylightRecipes.API` (Price, PriceAge, HasPrices, OnPrices), its hand-off switches in Daylight UI's settings (needs `daylightworld`), its `/recipes` command |
+| `tsmworld.lua` | `TSMWorld` | Mock of TSM's `TSM_API.GetCustomPriceValue` (DBMarket, DBMinBuyout, "i:<id>" item strings), from Glowey's Recipes' notes on TSM's source |
+| `auctioneerworld.lua` | `AuctioneerWorld` | Mock of Auctioneer's `AucAdvanced.API.GetMarketValue` ("item:<id>" links), from Glowey's Recipes' notes on Auctioneer's source |
 | `peerworld.lua` | `PeerWorld` | Other ProfLost players and the addon-message network: hellos, digests, chunks, guild, group, combat, zone moves |
 | `visual.lua` | `Visual` | What the harness keeps no record of: rects from anchors, frame levels, strata, alpha, scale, text widths, children, Daylight UI's window skins; `Visual.Check(label)` runs `Look.Check` |
 | `leakwatch.lua` | `LeakWatch` | Not a world: in `check.py --orders` it names each test file that leaves shared state changed (`leakmark.lua` runs it between files) |

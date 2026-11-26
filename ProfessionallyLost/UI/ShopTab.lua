@@ -212,25 +212,31 @@ end
 -- Said after the status line while the auction house is shut.
 ShopTab.SCAN_HINT = "scan at the auction house"
 
--- The Shop tab's status line follows the scan. While another addon holds prices it
--- names that addon, with Daylight UI's last sighting, and asks for no scan.
+-- Said ahead of the line when the picked price addon isn't loaded.
+ShopTab.FELL_BACK = "%s isn't loaded"
+
+-- The Shop tab's status line follows the scan. While another addon's prices come first it
+-- names that addon, with Daylight UI's last sighting, and asks for no scan of ProfLost's.
 local function scanSaid()
     local progress = Scan.ProgressText()
     if progress then return progress end
     local now = GetServerTime and GetServerTime() or time()
+    local gone = CP.Pricing.FellBack()
+    local lead = gone and ShopTab.FELL_BACK:format(gone) .. "  ·  " or ""
     local key, source = CP.Pricing.AddonSource()
     if source then
+        if not CP.Pricing.HoldsData(key) then return lead .. "No prices from " .. source .. " yet" end
         local seen = key == "daylight" and CP.Pricing.DaylightScannedAt()
         if seen then
-            return ("Prices from %s, updated %s ago"):format(source, CP.Pricing.FormatAge(math.max(0, now - seen)))
+            return lead .. ("Prices from %s, updated %s ago"):format(source, CP.Pricing.FormatAge(math.max(0, now - seen)))
         end
-        return "Prices from " .. source
+        return lead .. "Prices from " .. source
     end
     local last = Scan.LastTime()
     local said = last and ("Last scan %s ago"):format(CP.Pricing.FormatAge(math.max(0, now - last)))
         or "No price scan yet"
     if not Scan.open then said = said .. "  ·  " .. ShopTab.SCAN_HINT end
-    return said
+    return lead .. said
 end
 
 -- The line wraps when the window is narrow; the list stops above it.

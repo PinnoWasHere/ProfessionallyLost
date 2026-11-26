@@ -8,6 +8,13 @@ if CP.stopped then return end
 -- holds prices (Pricing.AddonSource), since those come first. While a scan runs it shows
 -- the progress and a click stops it; during the cooldown it shows the minutes left.
 --
+-- The game lets one addon scan at a time, so the button acts for the price addon the player
+-- picked (Pricing.Active). ProfLost's own scan runs only when ProfLost is the pick, or nothing
+-- is picked. DaylightMogul's scan starts through its /mogul scan command. An addon with no
+-- public start call gets one line on the button saying how to scan in it (ScanButton.HOW).
+-- ProfLost reads the new prices when that addon says they moved, or when the auction house
+-- closes (Pricing.Listen).
+--
 -- The window: DaylightMogul's own (DaylightMogulMain) while it stands in for the auction
 -- house, else the game's AuctionHouseFrame, dressed by Daylight UI's skins or not. Mogul
 -- parks the game's frame at alpha 0, so a parked frame doesn't count. Read only.
@@ -16,12 +23,24 @@ local S, Scan = CP.Style, CP.Scan
 
 local ScanButton = {
     LABEL = "Scan prices",
+    WITH = "Scan with %s",
     MOGUL_WINDOW = "DaylightMogulMain",
     GAME_WINDOW = "AuctionHouseFrame",
+    MOGUL_COMMAND = "DAYLIGHTMOGUL",   -- SlashCmdList key of /mogul
+    MOGUL_SCAN = "scan",               -- /mogul scan: its full scan
     H = 26,
     GAP = 4,              -- below the window's edge
     CHECK_EVERY = 0.2,    -- seconds between looks for the window while the auction house is open
     SEEN_ALPHA = 0.05,    -- a window drawn fainter than this is parked out of sight
+
+    -- How to scan in each pick with no public start call, by choice key.
+    HOW = {
+        tsm = "TSM's prices come from its desktop app",
+        auctioneer = "Scan in Auctioneer's own window",
+        auctionator = "Use Full Scan on Auctionator's tab",
+        daylight = "Use Daylight UI's Full scan link",
+        glowey = "Scan in Glowey's Recipes' window",
+    },
 }
 CP.ScanButton = ScanButton
 
@@ -48,9 +67,29 @@ local function hex(c)
         math.floor(c[3] * 255 + 0.5))
 end
 
+-- /mogul's handler while DaylightMogul is loaded, or nil.
+local function mogulCommand()
+    if not (CP.Pricing.Present("daylight") and rawget(_G, "DaylightMogul")) then return nil end
+    local list = rawget(_G, "SlashCmdList")
+    local fn = type(list) == "table" and list[ScanButton.MOGUL_COMMAND]
+    return type(fn) == "function" and fn or nil
+end
+
+-- What a click does: "own" (ProfLost's scan), "mogul" (DaylightMogul's scan) or "how"
+-- (a line on how to scan in the pick), and the pick's key.
+function ScanButton.Mode()
+    local key = CP.Pricing.Active()
+    if not key or key == "scan" or Scan.Running() then return "own" end
+    if key == "daylight" and mogulCommand() then return "mogul", key end
+    return "how", key
+end
+
 -- The label: progress while a scan runs, the gradient name otherwise, minutes left
--- during the cooldown.
+-- during the cooldown. For another addon: "Scan with <addon>", or how to scan in it.
 function ScanButton.Label()
+    local mode, key = ScanButton.Mode()
+    if mode == "mogul" then return CP.Gradient(ScanButton.WITH:format(CP.Pricing.config.names.mogul)) end
+    if mode == "how" then return ScanButton.HOW[key] end
     local progress = Scan.ProgressText()
     if progress then return progress end
     local left = Scan.CooldownLeft()
@@ -62,14 +101,36 @@ function ScanButton.Label()
 end
 
 -- True while the button should pulse: nothing runs, a full scan is allowed, the player
--- hasn't clicked it this visit, and no other addon holds prices.
+-- hasn't clicked it this visit, and ProfLost's scan is the one to run.
 function ScanButton.Wants()
-    return not clicked and not Scan.Running() and Scan.CooldownLeft() == 0
-        and CP.Pricing.AddonSource() == nil
+    return not clicked and ScanButton.Mode() == "own" and not Scan.Running() and Scan.CooldownLeft() == 0
+        and CP.Pricing.ScanChosen()
+end
+
+local CHANGE_LINE = "Pick which addon in Professionally Lost's settings, under Prices."
+
+-- The tooltip for another addon's scan.
+local function otherTooltip(mode, key)
+    local names = CP.Pricing.config.names
+    local name = mode == "mogul" and names.mogul or CP.Pricing.ChoiceInfo(key).name
+    GameTooltip:SetText(ScanButton.WITH:format(name), 1, 1, 1)
+    if mode == "mogul" then
+        GameTooltip:AddLine("Starts DaylightMogul's full scan. ProfLost reads its prices when the scan ends.",
+            0.8, 0.8, 0.8, true)
+    else
+        GameTooltip:AddLine(ScanButton.HOW[key] .. ". ProfLost reads its prices when they change.", 0.8, 0.8, 0.8, true)
+    end
+    GameTooltip:AddLine("The game lets one addon scan the auction house at a time.", 0.6, 0.6, 0.6, true)
+    GameTooltip:AddLine(CHANGE_LINE, 0.6, 0.6, 0.6, true)
 end
 
 local function tooltip(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    local mode, key = ScanButton.Mode()
+    if mode ~= "own" then
+        otherTooltip(mode, key)
+        return GameTooltip:Show()
+    end
     GameTooltip:SetText("Scan auction prices", 1, 1, 1)
     if Scan.Running() then
         GameTooltip:AddLine(Scan.ProgressText() .. ". Click to stop.", 0.8, 0.8, 0.8, true)
@@ -99,6 +160,14 @@ end
 function ScanButton.Click()
     clicked = true
     S.Pulse(button, false)
+    local mode, key = ScanButton.Mode()
+    if mode == "mogul" then
+        local fn = mogulCommand()
+        if fn and not pcall(fn, ScanButton.MOGUL_SCAN) then CP:Print("DaylightMogul's scan didn't start.") end
+        return
+    elseif mode == "how" then
+        return CP:Print(ScanButton.HOW[key] .. ".")
+    end
     if Scan.Running() then return Scan.Stop() end
     local ok, why = Scan.Start()
     if not ok and why then CP:Print(why) end
@@ -143,7 +212,7 @@ function ScanButton.Update()
         b.label:SetText(label)
         b:SetWidth(CP.Panel.TextWidth(b.label) + S.BUTTON_PAD)
     end
-    S.SetEnabled(b, Scan.Running() or Scan.CooldownLeft() == 0)
+    S.SetEnabled(b, ScanButton.Mode() ~= "own" or Scan.Running() or Scan.CooldownLeft() == 0)
     local fresh = not (host and host.window == h.window) or not b:IsShown()
     if fresh then
         host = h
