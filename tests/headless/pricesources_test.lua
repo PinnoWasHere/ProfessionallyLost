@@ -1,5 +1,5 @@
--- Auction prices come from DaylightMogul, Daylight UI's Auction House, Auctionator, then
--- ProfLost's own scan (Pricing/Provider.lua), and the Scan button and the Shop tab's status
+-- Auction prices come from DaylightMogul, Daylight UI's Auction House, Auctionator,
+-- ProfLost's own scan, then Glowey's Recipes (Pricing/Provider.lua), and the Scan button and the Shop tab's status
 -- line step back while another addon has prices.
 
 local CP = ProfLost
@@ -46,6 +46,38 @@ T.test("prices come from DaylightMogul, then Daylight UI's Auction House, then A
     T.eq(source, "auction", "Get still calls it an auction price")
     T.eq(select(2, Pricing.Get(THREAD, { 10, true })), "vendor", "a vendor good stays at the vendor")
     T.eq(select(2, Pricing.SaleValue(MEDIUM)), math.floor(41 * 0.95), "sale value reads the same order")
+end)
+
+T.test("Glowey's Recipes prices last, after our own scan, through its public API", function()
+    scanned({ [LIGHT] = { 10, NOW - 600 } })
+    GloweyWorld.begin({ prices = { [LIGHT] = 70, [MEDIUM] = 71 }, ages = { [LIGHT] = 5, [MEDIUM] = 3600 } })
+    T.eq({ Pricing.AuctionFrom(LIGHT) }, { 10, "scan", 600 }, "our scan before Glowey's")
+    T.eq({ Pricing.AuctionFrom(MEDIUM) }, { 71, "glowey", 3600 }, "Glowey fills what our scan lacks, with its age")
+    AuctionatorWorld.begin({ prices = { [MEDIUM] = 31 } })
+    T.eq(select(2, Pricing.AuctionFrom(MEDIUM)), "auctionator", "Auctionator before Glowey")
+    DUIAHWorld.begin({ prices = { [MEDIUM] = { 41, NOW } }, scannedAt = NOW })
+    T.eq(select(2, Pricing.AuctionFrom(MEDIUM)), "daylight", "Daylight UI before Glowey")
+    MogulWorld.begin({ prices = { [MEDIUM] = 50 } })
+    T.eq(select(2, Pricing.AuctionFrom(MEDIUM)), "mogul", "DaylightMogul before Glowey")
+
+    T.eq(Pricing.config.order[#Pricing.config.order], "glowey", "Glowey is the last in the one order list")
+    T.eq(Pricing.config.names.glowey, "Glowey's Recipes")
+
+    World.set(DaylightRecipes.API, "Price", function() error("boom") end)
+    T.eq(Pricing.Auction(THREAD), nil, "an error reads as no price")
+    World.set(_G, "DaylightRecipes", {})
+    T.eq(Pricing.Auction(THREAD), nil, "an API that is gone reads as no price")
+end)
+
+T.test("Glowey's Recipes counts as data but never stops our scan, and its changes re-rank plans", function()
+    scanned({})
+    GloweyWorld.begin({ prices = { [LIGHT] = 70 } })
+    T.eq(Pricing.HasAuctionData(), true, "it holds prices")
+    T.eq(Pricing.AddonSource(), nil, "it fills after our scan, so it is not the source that comes first")
+    local n = invalidations()
+    Pricing.Listen()
+    GloweyWorld.Changed()
+    T.eq(n(), 1, "Glowey's price event re-ranks")
 end)
 
 T.test("Daylight UI's table is absent while DaylightMogul owns the Auction House, and appears when published", function()
