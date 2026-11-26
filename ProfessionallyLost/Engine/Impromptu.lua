@@ -25,9 +25,7 @@ local function sets()
     if looted then return looted, made end
     looted, made = {}, {}
     local D = CP.GatherData
-    for _, list in pairs(D and D.loot or {}) do
-        for _, l in ipairs(list) do looted[l[1]] = true end
-    end
+    for _, item in ipairs(D and D.Index("looted") or {}) do looted[item] = true end
     for _, g in pairs(CP.Guides or {}) do
         for _, r in pairs(g.recipes or {}) do
             if r.makes then made[r.makes] = true end

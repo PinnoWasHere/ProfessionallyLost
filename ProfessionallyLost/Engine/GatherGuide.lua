@@ -141,11 +141,14 @@ function GG.Sources(line)
     if sources[line] then return sources[line] end
     local out = {}
     if line == G.SKINNING then
-        for entry, m in pairs(CP.GatherData.mobs) do
-            if m[4] and m[4][line] and G.Skinnable(entry) then
-                local level = math.floor((m[2] + m[3]) / 2)
-                out[#out + 1] = { kind = "mobs", entry = entry, name = m[1], req = G.CorpseSkill(level),
-                                  level = level, loot = m[4][line] }
+        -- The data's skins index: entry, name, minLevel, maxLevel, loot key per creature.
+        local skins = CP.GatherData.Index("skins")
+        for i = 1, #skins, 5 do
+            local entry = skins[i]
+            if G.Skinnable(entry) then
+                local level = math.floor((skins[i + 2] + skins[i + 3]) / 2)
+                out[#out + 1] = { kind = "mobs", entry = entry, name = skins[i + 1], req = G.CorpseSkill(level),
+                                  level = level, loot = skins[i + 4] }
             end
         end
     else
@@ -173,8 +176,8 @@ local placed = {}
 local function build(line, tick)
     local out = {}
     for _, src in ipairs(GG.Sources(line)) do
-        for zone, z in pairs(CP.GatherData.zones) do
-            if z[src.kind] and z[src.kind][src.entry] then
+        for zone in pairs(CP.GatherData.zones) do
+            if G.Holds(zone, src.kind, src.entry) then
                 local n = 0
                 for _, c in ipairs(G.Clusters(zone, src.kind, src.entry, tick)) do n = n + c[3] end
                 if n > 0 then
