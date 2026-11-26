@@ -943,27 +943,53 @@ end
 
 local lockBtn
 
--- Escape: the game hides every shown frame named in UISpecialFrames. A hidden proxy frame
--- named there is shown while `want()` is true, and its being hidden by Escape runs
--- `onEscape` (the close button's own handler, so the close is saved). Our own show and
--- hide of the proxy raise `syncing` and close nothing. Returns the function that
--- re-reads `want`.
+-- Escape: the game's CloseSpecialWindows hides every shown frame named in UISpecialFrames.
+-- A hidden proxy frame named there is shown while `want()` is true. The game also runs
+-- CloseSpecialWindows on its own: entering the world (login, /reload, a loading screen),
+-- losing control and full-screen panels all call CloseAllWindows. So a hide of the proxy
+-- only marks it, and the player's Escape (the ToggleGameMenu post-hook) runs `onEscape`,
+-- the close button's own handler, so the close is saved. A mark the hook doesn't take is
+-- dropped on the next frame, and the proxy shows again. Our own show and hide of the proxy
+-- raise `syncing` and mark nothing. Returns the function that re-reads `want`.
+local escapes = {}
+
 function Window.EscapeProxy(name, want, onEscape)
     local esc = CreateFrame("Frame", name, UIParent)
     esc:Hide()
     tinsert(UISpecialFrames, name)
-    local syncing = false
-    esc:SetScript("OnHide", function()
-        if not syncing then onEscape() end
+    local syncing, marked = false, false
+    local sync
+    local function drop()
+        marked = false
+        sync()
+    end
+
+    -- A parent's hide (Alt+Z hides UIParent) leaves the proxy shown and marks nothing.
+    esc:SetScript("OnHide", function(self)
+        if syncing or self:IsShown() or marked then return end
+        marked = true
+        C_Timer.After(0, drop)
     end)
-    local function sync()
+    sync = function()
         local on = want() and true or false
         if on == esc:IsShown() then return end
         syncing = true
         if on then esc:Show() else esc:Hide() end
         syncing = false
     end
+    escapes[#escapes + 1] = function()
+        if not marked then return end
+        marked = false
+        onEscape()
+    end
     return sync, esc
+end
+
+-- The player's Escape runs ToggleGameMenu; entering the world never does.
+if type(ToggleGameMenu) == "function" then
+    hooksecurefunc("ToggleGameMenu", function()
+        for _, take in ipairs(escapes) do take() end
+    end)
 end
 
 Window.EscSync, Window.escFrame = Window.EscapeProxy("ProfLost_GuideEscape",
