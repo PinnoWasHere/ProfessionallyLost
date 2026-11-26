@@ -32,6 +32,7 @@ local GatherPanel = {
     SIZE_MIN = { 220, 160 }, -- detached: the grip's least size, the header and about four rows
     MAX_W = 500,           -- detached: the grip's widest; the tallest is the screen
     GRIP_LIFT = 20,        -- the grip's frame levels above the sheet
+    LEVEL = 5,             -- detached: the sheet's least frame level, its shell's skin sits below it
     GAP = 8,               -- detached, first placed this far beside the guide window
     CLOSE = 16,            -- the detached panel's close box
     CLOSE_GAP = 6,         -- between the detached controls and the header's icons
@@ -651,13 +652,17 @@ end
 
 -- Standing and tucked in ---------------------------------------------------------------
 
--- The sheet as its own window, hanging from the anchor.
+-- The sheet as its own window, hanging from the anchor. True when it comes out of hiding or
+-- out of the guide window; a standing sheet keeps the level the client gave it.
 local function standFree()
+    local fresh = sheet:GetParent() ~= UIParent or not sheet:IsShown()
     if sheet:GetParent() ~= UIParent then sheet:SetParent(UIParent) end
-    sheet:SetFrameStrata(S.WINDOW_STRATA)
+    if sheet:GetFrameStrata() ~= S.WINDOW_STRATA then sheet:SetFrameStrata(S.WINDOW_STRATA) end
     sheet:SetToplevel(true)
-    sheet:SetFrameLevel(CP.Window and CP.Window.LEVEL or 5)
-    body:SetFrameLevel(sheet:GetFrameLevel() + 1)   -- under the shell's corner caps, whatever level it held in the clip
+    if fresh then
+        sheet:SetFrameLevel(GatherPanel.LEVEL)
+        body:SetFrameLevel(sheet:GetFrameLevel() + 1)   -- under the shell's corner caps, whatever level it held in the clip
+    end
     sheet:SetScale(anchorScale())
     sheet:ClearAllPoints()
     sheet:SetPoint("TOPLEFT", anchor, "TOPLEFT")
@@ -671,6 +676,7 @@ local function standFree()
     GatherPanel.LiftGrip()
     S.Restack()
     CP.Window.GatherEscSync()
+    return fresh
 end
 
 -- The sheet back in the guide window's clip at the window's width, without its own
@@ -701,8 +707,12 @@ end
 function GatherPanel.Update()
     if not CP.db or GatherPanel.Attached() then return end
     if not GatherPanel.Wanted() then return sheet:Hide() end
-    standFree()
+    local fresh = standFree()
     sheet:Show()
+    if fresh then
+        S.Front(sheet, GatherPanel.LEVEL)
+        GatherPanel.LiftGrip()
+    end
     GatherPanel.Fit()
     if CP.GatherList.stale then CP:Soon("gatherList", CP.GatherList.Refresh) end
 end

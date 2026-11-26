@@ -19,6 +19,10 @@
 --     ScrollBox.xml): a shown child frame with no anchors and no size, so no rect.
 --     Visual.Unplace(frame) gives any frame no rect.
 --   * [guess] SetToplevel and IsToplevel: a frame's own flag, false until set during the scene.
+--   * [docs] Raise puts a frame one level over every other shown frame in its strata, its
+--     descendants moving with it; Lower puts it at 0. A click raises the nearest toplevel frame
+--     at or above the clicked one (SetToplevel: "raises itself when clicked").
+--     Visual.Click(frame) is that click; Visual.Over(a, b) is true when `a` draws over `b`.
 --   * [guess] OnSizeChanged: a known frame's SetWidth, SetHeight or SetSize that changes its size fires
 --     the script at once with the new size. A size that follows from anchors fires nothing.
 --   * [guess] Font strings: LETTER px a letter (colour codes take none) at TEXT_PX, scaled by the
@@ -210,6 +214,36 @@ local function strataOf(o)
         o = parentOf(o)
     end
     return "MEDIUM"
+end
+
+local STRATA_RANK = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6,
+                      FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
+
+local function raise(o)
+    local strata, top = strataOf(o), 0
+    for _, d in ipairs(M.known) do
+        if d ~= o and type(d.Raise) == "function" and not under(d, o) and d:IsShown()
+            and strataOf(d) == strata then
+            top = math.max(top, levelOf(d))
+        end
+    end
+    setLevel(o, top + 1)
+end
+
+-- A click on `frame`: the nearest toplevel frame at or above it comes to the front.
+function Visual.Click(frame)
+    local o = frame
+    while o and o ~= UIParent do
+        if M.top[o] then return raise(o) end
+        o = parentOf(o)
+    end
+end
+
+-- True when `a` draws over `b`: a higher strata, or the same strata and a higher level.
+function Visual.Over(a, b)
+    local sa, sb = STRATA_RANK[strataOf(a)] or 0, STRATA_RANK[strataOf(b)] or 0
+    if sa ~= sb then return sa > sb end
+    return levelOf(a) > levelOf(b)
 end
 
 local function alphaOf(o) return M.alpha[o] or 1 end
@@ -514,6 +548,8 @@ function Visual.begin()
         stub(kind .. ":GetFrameStrata", function(self) return strataOf(self) end)
         stub(kind .. ":SetToplevel", function(self, on) M.top[self] = on and true or false end)
         stub(kind .. ":IsToplevel", function(self) return M.top[self] == true end)
+        stub(kind .. ":Raise", function(self) raise(self) end)
+        stub(kind .. ":Lower", function(self) setLevel(self, 0) end)
         stub(kind .. ":GetChildren", function(self) return children(self) end)
         stub(kind .. ":GetNumChildren", function(self) return select("#", children(self)) end)
         stub(kind .. ":GetRegions", function(self) return children(self, true) end)
