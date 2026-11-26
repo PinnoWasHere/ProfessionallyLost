@@ -12,6 +12,8 @@ tests/world/mogulworld.lua
 tests/world/duiahworld.lua
 tests/world/auctionatorworld.lua
 tests/world/gloweyworld.lua
+tests/world/tsmworld.lua
+tests/world/auctioneerworld.lua
 tests/world/peerworld.lua
 tests/world/visual.lua
 tests/world/leakwatch.lua

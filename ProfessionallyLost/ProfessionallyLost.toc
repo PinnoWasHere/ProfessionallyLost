@@ -98,3 +98,4 @@ UI\LookCheck.lua
 UI\Preview.lua
 UI\Plugin.lua
 UI\News.lua
+UI\PriceAsk.lua
