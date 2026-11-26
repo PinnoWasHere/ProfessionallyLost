@@ -161,8 +161,9 @@ T.test("farming leaves out only creatures too high for the player", function()
         local limit = 30 + G.FARM_SAFE_LEVELS
         for item, list in pairs(rows) do
             for name in pairs(list) do
-                for entry, m in pairs(CP.GatherData.mobs) do
-                    if m[1] == name and CP.GatherData.zones[BARRENS].mobs[entry] then
+                for entry in pairs(CP.GatherData.zones[BARRENS].mobs) do
+                    local m = CP.GatherData.mobs[entry]
+                    if m[1] == name then
                         T.ok(m[2] <= limit, ("%s (%d) for %d"):format(name, m[2], item))
                     end
                 end

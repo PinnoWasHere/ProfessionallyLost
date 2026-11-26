@@ -11,22 +11,28 @@ CP.Farm = Farm
 local G = CP.Gather
 local SAFE_LEVELS = 3
 
--- item -> { { kind = "mobs" | "nodes", entry, prof, chance } }, built once.
+-- item -> { { kind = "mobs" | "nodes", entry, prof, chance, level? } }, built once.
+-- Creatures come from the data's farm index (item, entry, prof, chance, minLevel), so
+-- no creature or its loot decodes; `level` is the creature's minimum level.
 local index
 local function sources(item)
     if not index then
         index = {}
         local D = CP.GatherData
+        local farm = D.Index("farm")
+        for i = 1, #farm, 5 do
+            local entry, prof = farm[i + 1], farm[i + 2]
+            if G.Gives(entry, prof) then
+                local list = index[farm[i]] or {}
+                index[farm[i]] = list
+                list[#list + 1] = { kind = "mobs", entry = entry, prof = prof, chance = farm[i + 3], level = farm[i + 4] }
+            end
+        end
         local function add(key, kind, entry, prof)
             for _, l in ipairs(D.loot[key] or {}) do
                 local list = index[l[1]] or {}
                 index[l[1]] = list
                 list[#list + 1] = { kind = kind, entry = entry, prof = prof, chance = l[2] }
-            end
-        end
-        for entry, m in pairs(D.mobs) do
-            for prof, key in pairs(m[4]) do
-                if G.Gives(entry, prof) then add(key, "mobs", entry, prof) end
             end
         end
         for entry, n in pairs(D.nodes) do
@@ -43,7 +49,7 @@ local function usable(src, skills)
     if src.kind == "mobs" then
         if src.prof == G.COOKING then return true end
         local rank = skills[src.prof]
-        return rank ~= nil and rank >= G.CorpseSkill(D.mobs[src.entry][2])
+        return rank ~= nil and rank >= G.CorpseSkill(src.level)
     end
     local rank = skills[src.prof]
     return rank ~= nil and rank >= math.max(1, D.nodes[src.entry][2] or 1)
@@ -82,10 +88,10 @@ function Farm.Items(skills, level, minChance)
     local key = keyOf(0, { level = level, skills = skills }) .. ":" .. tostring(minChance)
     if itemLists[key] then return itemLists[key] end
     sources(0)
-    local D, out = CP.GatherData, {}
+    local out = {}
     for item, list in pairs(index) do
         for _, src in ipairs(list) do
-            local safe = src.kind ~= "mobs" or D.mobs[src.entry][2] <= (level or 1) + SAFE_LEVELS
+            local safe = src.kind ~= "mobs" or src.level <= (level or 1) + SAFE_LEVELS
             if src.chance >= (minChance or 0) and safe and usable(src, skills) then
                 out[#out + 1] = item
                 break
@@ -111,7 +117,7 @@ local function search(item, opts, tick)
             and not (z.lvl and z.lvl[1] > level + SAFE_LEVELS) then
             local score = 0
             for _, src in ipairs(list) do
-                if z[src.kind] and z[src.kind][src.entry] and G.Farmable(src.kind, src.entry, zone) then
+                if G.Holds(zone, src.kind, src.entry) and G.Farmable(src.kind, src.entry, zone) then
                     local weight = src.chance / 100
                     if src.kind == "mobs" then
                         local m = D.mobs[src.entry]

@@ -487,6 +487,25 @@ Gather.lastOutdoor = nil
 
 local function hasData(zone) return CP.GatherData.zones[zone] ~= nil end
 
+-- True when the data places creature or node `entry` ("mobs" or "nodes") in `zone`.
+-- Reads the zone's `has` list, so a zone not yet decoded stays packed.
+local holds = setmetatable({}, { __mode = "k" })   -- zone table -> { mobs = set, nodes = set }
+function Gather.Holds(zone, kind, entry)
+    local z = CP.GatherData.zones[zone]
+    if not z then return false end
+    local has = rawget(z, "has")
+    if not has then return z[kind] ~= nil and z[kind][entry] ~= nil end
+    local sets = holds[z]
+    if not sets then
+        sets = { mobs = {}, nodes = {} }
+        for code, id in has:gmatch("(%a)(%d+)") do
+            sets[code == "m" and "mobs" or "nodes"][tonumber(id)] = true
+        end
+        holds[z] = sets
+    end
+    return sets[kind] ~= nil and sets[kind][entry] == true
+end
+
 -- The first of the game's place names that isn't `zone`'s own name, or nil.
 local function otherPlace(zone, ...)
     local info = zone and C_Map.GetMapInfo(zone)
@@ -1240,7 +1259,8 @@ Gather.ESTIMATE_LEVELS = 1
 Gather.SKIN_TYPES = { Beast = true, Dragonkin = true }
 
 local estimates, estimateData = {}, nil
-local bandMobs              -- { [level] = { { [item] = chance } } } for classic skinnable creatures
+local bandKeys              -- { [level] = { skinning loot key, ... } }, one per skinnable creature
+local bandMobs = {}         -- { [level] = { { [item] = chance } } }, filled per level on first use
 
 local function median(list)
     table.sort(list)
@@ -1254,27 +1274,37 @@ end
 -- likeliest first. The nearest levels with data stand in for a level with none.
 function Gather.EstimatedSkin(level)
     local D = CP.GatherData
-    if estimateData ~= D then estimates, estimateData, bandMobs = {}, D, nil end
+    if estimateData ~= D then estimates, estimateData, bandKeys, bandMobs = {}, D, nil, {} end
     level = math.floor(level)
     if estimates[level] then return estimates[level] end
-    if not bandMobs then
-        bandMobs = {}
-        for _, m in pairs(D.mobs) do
-            local key = m[4] and m[4][Gather.SKINNING]
-            local loot = key and D.loot[key]
-            if loot and #loot > 0 then
-                local mid = math.floor((m[2] + m[3]) / 2)
-                local chances = {}
-                for _, l in ipairs(loot) do chances[l[1]] = l[2] end
-                bandMobs[mid] = bandMobs[mid] or {}
-                table.insert(bandMobs[mid], chances)
-            end
+
+    -- The data's skins index names each creature's levels and key, so only the
+    -- loot of the levels looked at decodes.
+    if not bandKeys then
+        bandKeys = {}
+        local skins = D.Index("skins")
+        for i = 1, #skins, 5 do
+            local mid = math.floor((skins[i + 2] + skins[i + 3]) / 2)
+            bandKeys[mid] = bandKeys[mid] or {}
+            table.insert(bandKeys[mid], skins[i + 4])
         end
     end
     local group = {}
     for reach = Gather.ESTIMATE_LEVELS, 60 do
         for l = level - reach, level + reach do
-            for _, c in ipairs(bandMobs[l] or {}) do group[#group + 1] = c end
+            if not bandMobs[l] then
+                local list = {}
+                for _, key in ipairs(bandKeys[l] or {}) do
+                    local loot = D.loot[key]
+                    if loot and #loot > 0 then
+                        local chances = {}
+                        for _, row in ipairs(loot) do chances[row[1]] = row[2] end
+                        list[#list + 1] = chances
+                    end
+                end
+                bandMobs[l] = list
+            end
+            for _, c in ipairs(bandMobs[l]) do group[#group + 1] = c end
         end
         if #group > 0 then break end
     end
