@@ -73,6 +73,7 @@ UI\Plan.lua
 UI\Crafting.lua
 UI\PatternLearn.lua
 UI\CraftRows.lua
+UI\MapPins.lua
 UI\VendorWatch.lua
 UI\Buying.lua
 UI\RouteLines.lua
