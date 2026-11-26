@@ -242,7 +242,7 @@ T.test("the 9 cards, in order, each lighting its part", function()
     a, b = E.Step().part()
     T.eq(a, P.tabs.shop.content, "the Shop tab")
     T.eq(b, P.tabs.shop.button)
-    T.eq(E.Step().text(), Tour.WORDS.shop.text)
+    T.eq(E.Step().text(), (Tour.WORDS.shop.text:gsub(Tour.WORDS.shop.key, "[" .. Tour.WORDS.shop.key .. "]")))
 
     nextCard(E)
     T.ok(GP.Showing(), "the tour opens the gathering panel")
@@ -258,6 +258,27 @@ T.test("the 9 cards, in order, each lighting its part", function()
     T.eq(a, P.logo, "the window title")
     T.eq(b, P.title)
     T.ok(E.Step().text():find("Right-click the title", 1, true) and E.Step().text():find("[Take the tour]", 1, true))
+end)
+
+T.test("each card lights the one phrase a player must not miss", function()
+    local E = scene()
+    open()
+    local want = {
+        steps = "[Click a step to see it in full below]",
+        skillups = "[never uses materials your guide needs]",
+        details = "[what you still need]",
+        shop = "[Everything the guide needs you to buy]",
+        gather = "[a route on the map]",
+        mode = "[for gold]",
+        settings = "[Right-click the title for the settings]",
+    }
+    for _ = 1, #E.list - 1 do
+        nextCard(E)
+        local step = E.Step()
+        if want[step.id] then
+            T.ok(step.text():find(want[step.id], 1, true), step.id .. " marks " .. want[step.id])
+        end
+    end
 end)
 
 T.test("Back to a guide card switches back to the Guide tab", function()
@@ -285,7 +306,7 @@ T.test("with no profession, no gathering skill and no Shop tab, those cards sit 
     end
     T.eq(missing, { "steps", "skillups", "details", "shop", "gather", "mode" })
     T.ok(not GP.Showing(), "no gathering panel opened without a gathering skill")
-    T.eq(Tour.WORDS.gather.none, E.list[7].text(), "the gathering card says what the window needs")
+    T.eq((Tour.WORDS.gather.none:gsub(Tour.WORDS.gather.noneKey, "[" .. Tour.WORDS.gather.noneKey .. "]")), E.list[7].text(), "the gathering card says what the window needs")
     T.ok(E.list[6].text():find("[Gather it yourself]", 1, true), "the Shop card says where Shop comes from")
     E.Next()
     T.eq(seen(), true, "the tour reaches its end")
