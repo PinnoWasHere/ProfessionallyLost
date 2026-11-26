@@ -69,8 +69,10 @@ function ItemTooltip.Lines(item)
     return lines
 end
 
+-- Nothing while the lines are left to Glowey's Recipes.
 function ItemTooltip.Add(tooltip, item)
     if not (CP.db and CP.db.itemTooltip) or not readable(item) then return false end
+    if CP.Glowey and CP.Glowey.Handed("tooltip") then return false end
     local lines = ItemTooltip.Lines(item)
     if #lines == 0 then return false end
     tooltip:AddLine(" ")

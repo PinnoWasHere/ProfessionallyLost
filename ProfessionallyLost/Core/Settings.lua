@@ -11,7 +11,8 @@ if CP.stopped then return end
 -- the setting switches, and `affects(guideKey)` (optional) says whether it can change that
 -- guide; the guide window's header offers it as "with <profession>" (Settings.Switches).
 -- `disabled(get)` dims a row and ignores its clicks; a greyed toggle draws off (Settings.Shown).
--- `shown()` (toggles) overrides the position the switch draws. A row
+-- `shown()` (toggles) overrides the position the switch draws. `when()` (toggles and buttons)
+-- lists the row only while true; `confirm` (buttons) asks for a second click. A row
 -- without a key stores its value elsewhere through `get()`, `set(v)` and `default()`.
 
 local Settings = {}
@@ -187,6 +188,44 @@ Settings.LIST = {
       label = "Bag marks",
       desc = "A profession icon on bag items your guides need, so you don't sell them.",
       apply = function() if CP.NeededMarks then CP.NeededMarks.Refresh() end end },
+    -- Jobs Glowey's Recipes does too (Core/Glowey.lua). The rows show only while it is loaded.
+    { key = "gloweyGuide", group = "Glowey's Recipes", kind = "toggle",
+      label = "Leveling guide",
+      desc = "Leave the leveling guide to Glowey's Recipes. The guide window, and a Gathering window attached to it, "
+          .. "stay shut until you open them, and the profession window's recipes lose their step marks. "
+          .. "Greyed out while Glowey's Recipes leaves its Leveling Guide to Professionally Lost.",
+      when = function() return CP.Glowey.Loaded() end,
+      disabled = function() return CP.Glowey.Defers("guide") end,
+      apply = function() CP.Glowey.Apply("guide") end },
+    { key = "gloweyBuy", group = "Glowey's Recipes", kind = "toggle",
+      label = "Buy for guide button",
+      desc = "Leave buying at vendors to Glowey's Recipes, so the Buy for guide button stays off the vendor's window. "
+          .. "Greyed out while Glowey's Recipes leaves its Buy Lists to Professionally Lost.",
+      when = function() return CP.Glowey.Loaded() end,
+      disabled = function() return CP.Glowey.Defers("buy") end,
+      apply = function() CP.Glowey.Apply("buy") end },
+    { key = "gloweyTips", group = "Glowey's Recipes", kind = "toggle",
+      label = "Item tooltip lines",
+      desc = "Leave the guides' needs in item tooltips to Glowey's Recipes, so Professionally Lost adds no lines there. "
+          .. "Greyed out while Glowey's Recipes leaves its guide line to Professionally Lost or has its item tooltips off.",
+      when = function() return CP.Glowey.Loaded() end,
+      disabled = function() return CP.Glowey.Defers("tooltip") end,
+      apply = function() CP.Glowey.Apply("tooltip") end },
+    { kind = "button", group = "Glowey's Recipes",
+      label = "Open Glowey's Recipes", button = "Open",
+      desc = "Opens Glowey's Recipes' window.",
+      when = function() return CP.Glowey.CanOpen() end,
+      apply = function() CP.Glowey.Open() end },
+    { kind = "button", group = "Glowey's Recipes",
+      label = "Glowey's Recipes settings", button = "Open",
+      desc = "Opens Glowey's Recipes' own options page, where its switches leave jobs to Professionally Lost.",
+      when = function() return CP.Glowey.CanOpenSettings() end,
+      apply = function() CP.Glowey.OpenSettings() end },
+    { kind = "button", group = "Glowey's Recipes",
+      label = "Put everything back", button = "Put back", confirm = true,
+      desc = "Turns all three off, so Professionally Lost does every job itself again.",
+      when = function() return CP.Glowey.Loaded() end,
+      apply = function() CP.Glowey.PutBack() end },
     { kind = "button", group = "Help",
       label = "Report a bug",
       desc = "Opens a report to copy, with your versions, where you are, the guide's steps and recent errors.",
@@ -218,6 +257,7 @@ Settings.GROUP_DESC = {
     ["Gathering window"] = "The window beside the guide window: what you can gather in your zone, and a route.",
     ["Guide window"] = "Move it in unlock mode (/dui unlock), or drag its title bar while its lock is open.",
     ["Tooltips and bags"] = "Lines the guides add to the game's tooltips and bags.",
+    ["Glowey's Recipes"] = "Glowey's Recipes does these jobs too. Switch one on to leave it to Glowey's Recipes.",
     ["Help"] = "Something wrong? A report holds what's needed to find it.",
 }
 

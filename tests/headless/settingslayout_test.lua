@@ -14,6 +14,8 @@ local BEFORE = {
     textScale = 1, windowOpacity = 0.85, font = "general",
     -- Added after the tidy, on by default.
     whatsNew = true, newerNotice = true,
+    -- The Glowey's Recipes hand-offs (2026-11-26), off by default.
+    gloweyGuide = false, gloweyBuy = false, gloweyTips = false,
 }
 
 -- The designed page: group, then each row's key (or label for a keyless row, "note" for the note).
@@ -24,6 +26,8 @@ local ORDER = {
     { "Gathering window", { "gatherAttached", "gatherSide", "Gathering window scale", "vendorAlerts",
                            "mapIcons", "otherZones", "gatherHideInCombat" } },
     { "Tooltips and bags", { "itemTooltip", "unitTooltip", "neededMarks" } },
+    { "Glowey's Recipes", { "gloweyGuide", "gloweyBuy", "gloweyTips", "Open Glowey's Recipes",
+                            "Glowey's Recipes settings", "Put everything back" } },
     { "Help", { "Report a bug", "whatsNew", "What's New", "newerNotice", "Take the tour" } },
 }
 
