@@ -147,6 +147,7 @@ end
 
 local inCombat = false
 Window.opened = false   -- opened in a fight while hideInCombat hides it; stays for that fight
+Window.byHand = false   -- opened by the player this session; shows while the guide is left to Glowey's Recipes
 
 -- True when the player closed the free window. Saved: it stays shut through combat,
 -- loading screens, profession windows closing and reloads, until the minimap button,
@@ -169,6 +170,7 @@ end
 -- True when the window should show now.
 function Window.Wanted()
     if Window.Closed() then return false end
+    if not Window.byHand and CP.Glowey and CP.Glowey.Handed("guide") then return false end
     return Window.opened or not combatHidden()
 end
 
@@ -547,12 +549,14 @@ end
 function Window.Open()
     if CP.db then CP.db.windowClosed = nil end
     Window.opened = combatHidden()
+    Window.byHand = true
     Window.Update()
 end
 
 function Window.Close()
     if CP.db then CP.db.windowClosed = true end
     Window.opened = false
+    Window.byHand = false
     Window.Update()
 end
 

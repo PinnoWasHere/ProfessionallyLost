@@ -69,7 +69,8 @@ T.test("options: a coupling row is hidden without its profession and shown with 
     for _, g in ipairs(CP.Plugin.Pages()[1].groups) do
         for _, it in ipairs(g.items) do
             local s = it.key and CP.Settings.Find(it.key)
-            if s and (not s.couples or s.showAlways) then T.eq(it.hidden, nil, it.key .. " is never hidden") end
+            -- (A row with `when`, such as the Glowey's Recipes switches, hides by its own rule.)
+            if s and (not s.couples or s.showAlways) and not s.when then T.eq(it.hidden, nil, it.key .. " is never hidden") end
         end
     end
 end)

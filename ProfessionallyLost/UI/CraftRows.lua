@@ -32,7 +32,7 @@ local function paint(line, recipeID)
     local b = bar(line)
     if not b then return end
     local mark = recipeID and marks[recipeID]
-    if not mark then return b:Hide() end
+    if not mark or (CP.Glowey and CP.Glowey.Handed("guide")) then return b:Hide() end
     local c = CP.Style.color.accent
     b:SetColorTexture(c[1], c[2], c[3], mark == "current" and 1 or CraftRows.STEP_ALPHA)
     b:Show()
@@ -46,6 +46,9 @@ function CraftRows.Set(newMarks)
 end
 
 function CraftRows.Marks() return marks end
+
+-- Paints every line again, after the guide was left to Glowey's Recipes or taken back.
+function CraftRows.Repaint() CraftRows.Set(marks) end
 
 -- Plugin.Start hands over `me` and the API. Nothing happens without Paint and Attach.
 function CraftRows.UseDaylight(me, API)

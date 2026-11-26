@@ -65,8 +65,9 @@ function Plugin.Pages(API)
                 -- The button says it all: an empty row label, the words on the button
                 -- (Options/Widgets.lua W.button shows item.text, else the label). A row with
                 -- `button` keeps its label beside a button with those words.
+                -- `confirm` turns the first click into "Click again" (Options/Registry.lua button rows).
                 items[#items + 1] = { type = "button", label = s.button and s.label or "", text = s.button or s.label,
-                                      desc = s.desc, func = s.apply,
+                                      desc = s.desc, func = s.apply, confirm = s.confirm,
                                       hidden = s.when and function() return not s.when() end or nil }
             else
                 -- A row coupling a profession the character lacks is hidden, not left on and
@@ -75,6 +76,8 @@ function Plugin.Pages(API)
                 local hidden
                 if s.couples and not s.showAlways then
                     hidden = function() return not CP.Settings.HasCoupled(s) end
+                elseif s.when then
+                    hidden = function() return not s.when() end
                 end
                 local row = { type = "toggle", key = s.key, label = s.label, desc = s.desc,
                               disabled = s.disabled, hidden = hidden }
@@ -239,7 +242,11 @@ function Plugin.Start()
     CP.NeededMarks.UseDaylight(me, API)
 
     me.On("SettingChanged", function(scope, path, value)
-        if scope == NAME then CP.Settings.Set(path, value) end
+        if scope == NAME then
+            CP.Settings.Set(path, value)
+        elseif scope == CP.Glowey.ADDON then
+            CP.Glowey.Heard(path)
+        end
     end)
     me.On("Login", function() Plugin.Sync(API) end)
     CP:On("ADDON_LOADED", function(_, addon)

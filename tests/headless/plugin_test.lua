@@ -53,6 +53,13 @@ T.test("an older or different Daylight UI API keeps ProfLost standalone", functi
     reset()
 end)
 
+-- Button rows that keep a label beside their button word, by that word.
+local LABELLED = {
+    Show = { ["What's New"] = true },
+    Open = { ["Open Glowey's Recipes"] = true, ["Glowey's Recipes settings"] = true },
+    ["Put back"] = { ["Put everything back"] = true },
+}
+
 T.test("with Daylight UI: plugin, module with every shared setting, command, fade", function()
     local rec = standIn({})
     T.ok(CP.Plugin.Start())
@@ -69,9 +76,11 @@ T.test("with Daylight UI: plugin, module with every shared setting, command, fad
             for _, item in ipairs(g.items) do
                 if item.key then keys[item.key] = item.type end
                 if item.type == "button" then
-                    -- A row with its own button word (What's New: Show) keeps its label.
-                    local want = item.text == "Show" and "What's New" or ""
-                    T.eq(item.label, want, item.text .. ": the row label")
+                    -- A row with its own button word (What's New: Show, the Glowey's Recipes rows)
+                    -- keeps its label.
+                    local labelled = LABELLED[item.text]
+                    T.ok(item.label == "" and not labelled or labelled ~= nil and labelled[item.label] == true,
+                         item.text .. ": the row label " .. tostring(item.label))
                     keys["button:" .. item.text] = item.func
                     keys["hidden:" .. item.text] = item.hidden
                 end

@@ -774,10 +774,11 @@ end
 
 -- Shows the button while a vendor window shows the shop. It is on when this merchant
 -- sells what the guides want and the player can pay; its tooltip says why when it is off.
--- It fades with that window, as its child.
+-- It fades with that window, as its child. It stays off while buying is left to Glowey's Recipes.
 function Buying.Update()
     local b = vendor.button
-    local host = Buying.open and Buying.Host() or nil
+    local handed = CP.Glowey ~= nil and CP.Glowey.Handed("buy")
+    local host = Buying.open and not handed and Buying.Host() or nil
     if Buying.open and (vendor.dirty or vendor.look) and (host or Buying.Tracing()) then
         local look = not vendor.dirty
         vendor.dirty, vendor.look = false, false
