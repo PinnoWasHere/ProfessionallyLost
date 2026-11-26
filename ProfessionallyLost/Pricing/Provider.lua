@@ -2,64 +2,175 @@ local _, CP = ...
 if CP.stopped then return end
 
 -- Material prices in copper. Order: a vendor that always stocks the item, then the
--- auction price (DaylightMogul's market price, else ProfLost's own scan in Scan.lua),
--- then the item's vendor list price as a rough estimate.
+-- auction price, then the item's vendor list price as a rough estimate.
+--
+-- The auction price comes from the first source in `config.order` that prices the item:
+-- DaylightMogul, Daylight UI's Auction House (DaylightUI.AuctionPrices), Auctionator
+-- (its public v1 API), then ProfLost's own scan (Scan.lua). Each addon is looked up at
+-- call time, so one that publishes late or switches off is followed.
 
 local Pricing = {}
 CP.Pricing = Pricing
 
-local MOGUL = "DaylightMogul"   -- optional addon global, looked up at call time
-local SOURCE = "market"
--- Staple materials: any one priced means Mogul has scanned (its API has no count).
-local STAPLES = { 2589, 2592, 4306, 2770, 2771, 2318, 2319, 2447, 765, 2835 }
+Pricing.config = {
+    order = { "mogul", "daylight", "auctionator", "scan" },
+    names = {
+        mogul = "DaylightMogul",
+        daylight = "Daylight UI's Auction House",
+        auctionator = "Auctionator",
+        scan = "ProfLost's scan",
+    },
+    mogulSource = "market",
+    caller = "ProfessionallyLost",   -- Auctionator's callerID
+    day = 86400,                     -- Auctionator ages its prices in whole days
 
-local function mogul()
-    local m = _G[MOGUL]
-    return type(m) == "table" and type(m.API) == "table" and type(m.API.Price) == "function" and m.API or nil
-end
+    -- Staple materials: any one priced means a source with no count of its own has data.
+    staples = { 2589, 2592, 4306, 2770, 2771, 2318, 2319, 2447, 765, 2835 },
+}
+local config = Pricing.config
 
--- True while DaylightMogul's price API is loaded.
-function Pricing.HasMogul() return mogul() ~= nil end
+local function now() return GetServerTime and GetServerTime() or time() end
 
-local function mogulPrice(itemID)
-    local api = mogul()
-    if not api then return nil end
-    local ok, price = pcall(api.Price, itemID, SOURCE)
-    if ok and type(price) == "number" and price > 0 then return price end
+-- A pcall's answer as a price: a positive number and what came after it, else nil.
+local function positive(ok, price, ...)
+    if ok and type(price) == "number" and price > 0 then return price, ... end
     return nil
 end
 
--- Mogul's price first, then our own scanned price of any age.
-local function auctionPrice(itemID)
-    local price = mogulPrice(itemID)
-    if price then return price end
-    return CP.Scan and CP.Scan.Price(itemID) or nil
+-- DaylightMogul's API while it is loaded.
+local function mogul()
+    local m = rawget(_G, "DaylightMogul")
+    return type(m) == "table" and type(m.API) == "table" and type(m.API.Price) == "function" and m.API or nil
 end
 
--- True once DaylightMogul holds a market price for any staple material, or our own
--- scan holds any price for this realm and faction.
+-- DaylightUI.AuctionPrices. Absent while its Auction House module is off or DaylightMogul
+-- owns the Auction House.
+local function daylight()
+    local d = rawget(_G, "DaylightUI")
+    local p = type(d) == "table" and d.AuctionPrices
+    return type(p) == "table" and type(p.Item) == "function" and p or nil
+end
+
+-- Auctionator's public v1 API while it is loaded.
+local function auctionator()
+    local a = rawget(_G, "Auctionator")
+    local v1 = type(a) == "table" and type(a.API) == "table" and a.API.v1
+    return type(v1) == "table" and type(v1.GetAuctionPriceByItemID) == "function" and v1 or nil
+end
+
+-- Each source has present(), price(id) -> copper and its age in seconds (nil when the
+-- source gives none), and optionally data() -> true once it holds any price.
+local sources = {}
+
+sources.mogul = {
+    present = function() return mogul() ~= nil end,
+    price = function(id)
+        local api = mogul()
+        if not api then return nil end
+        return (positive(pcall(api.Price, id, config.mogulSource)))
+    end,
+}
+
+sources.daylight = {
+    present = function() return daylight() ~= nil end,
+    price = function(id)
+        local p = daylight()
+        if not p then return nil end
+        local price, seen = positive(pcall(p.Item, id))
+        if not price then return nil end
+        return price, type(seen) == "number" and math.max(0, now() - seen) or nil
+    end,
+    data = function()
+        local p = daylight()
+        return p ~= nil and type(p.ScannedAt) == "function" and positive(pcall(p.ScannedAt)) ~= nil
+    end,
+}
+
+sources.auctionator = {
+    present = function() return auctionator() ~= nil end,
+    price = function(id)
+        local v1 = auctionator()
+        if not v1 then return nil end
+        local price = positive(pcall(v1.GetAuctionPriceByItemID, config.caller, id))
+        if not price then return nil end
+        local age
+        if type(v1.GetAuctionAgeByItemID) == "function" then
+            local ok, days = pcall(v1.GetAuctionAgeByItemID, config.caller, id)
+            if ok and type(days) == "number" then age = math.max(0, days) * config.day end
+        end
+        return price, age
+    end,
+}
+
+sources.scan = {
+    present = function() return CP.Scan ~= nil end,
+    price = function(id)
+        local price, seen = CP.Scan.Price(id)
+        if not price then return nil end
+        return price, seen and math.max(0, now() - seen) or nil
+    end,
+    data = function() return CP.Scan.HasData() end,
+}
+
+local function holdsData(src)
+    if not src.present() then return false end
+    if src.data then return src.data() == true end
+    for _, id in ipairs(config.staples) do
+        if src.price(id) then return true end
+    end
+    return false
+end
+
+-- The auction price, its source key and its age in seconds, from the first source that
+-- prices the item.
+local function auctionPrice(itemID)
+    for _, key in ipairs(config.order) do
+        local src = sources[key]
+        if src.present() then
+            local price, age = src.price(itemID)
+            if price then return price, key, age end
+        end
+    end
+    return nil
+end
+
+-- The first other addon that holds prices: its key and name, or nil.
+function Pricing.AddonSource()
+    for _, key in ipairs(config.order) do
+        if key ~= "scan" and holdsData(sources[key]) then return key, config.names[key] end
+    end
+    return nil
+end
+
+-- True once any source holds a price for this realm and faction.
 function Pricing.HasAuctionData()
-    if CP.Scan and CP.Scan.HasData() then return true end
-    if not mogul() then return false end
-    for _, id in ipairs(STAPLES) do
-        if mogulPrice(id) then return true end
+    for _, key in ipairs(config.order) do
+        if holdsData(sources[key]) then return true end
     end
     return false
 end
 
 -- The auction price for an item, or nil.
 function Pricing.Auction(itemID)
+    return (auctionPrice(itemID))
+end
+
+-- The auction price, the key of its source and its age in seconds, or nil.
+function Pricing.AuctionFrom(itemID)
     return auctionPrice(itemID)
 end
 
--- Seconds since our own scan saw the item's price; nil when the price is Mogul's or
--- there is none.
+-- Seconds since the winning source saw the item's price. Nil when that source gives no
+-- age (DaylightMogul) or there is no price.
 function Pricing.AuctionAge(itemID)
-    if mogulPrice(itemID) or not CP.Scan then return nil end
-    local price, seen = CP.Scan.Price(itemID)
-    if not (price and seen) then return nil end
-    local now = GetServerTime and GetServerTime() or time()
-    return math.max(0, now - seen)
+    return (select(3, auctionPrice(itemID)))
+end
+
+-- When Daylight UI's Auction House last saw anything, or nil.
+function Pricing.DaylightScannedAt()
+    local p = daylight()
+    if not (p and type(p.ScannedAt) == "function") then return nil end
+    return (positive(pcall(p.ScannedAt)))
 end
 
 -- "5 min", "3 h", "2 d".
@@ -69,15 +180,43 @@ function Pricing.FormatAge(seconds)
     return ("%d d"):format(math.floor(seconds / 86400))
 end
 
+local listeners = {}
+
+-- `fn()` runs whenever another addon's prices move.
+function Pricing.OnChange(fn) listeners[#listeners + 1] = fn end
+
 -- New market data: plans re-rank on the next refresh.
-CP:On("PLAYER_LOGIN", function()
+function Pricing.Changed()
+    if CP.Plan and CP.Plan.Invalidate then CP.Plan.Invalidate() end
+    if CP.Panel and CP.Panel.frame and CP.Panel.frame:IsShown() then CP.Panel:Refresh() end
+    for _, fn in ipairs(listeners) do fn() end
+end
+
+local auctionatorHeard = false   -- Auctionator calls back when its prices move
+
+-- Listens to every price source that says when its prices move. Runs at login.
+function Pricing.Listen()
     local api = mogul()
     if api and type(api.On) == "function" then
-        api.On("PricesChanged", function()
-            if CP.Plan and CP.Plan.Invalidate then CP.Plan.Invalidate() end
-            if CP.Panel and CP.Panel.frame and CP.Panel.frame:IsShown() then CP.Panel:Refresh() end
-        end)
+        pcall(api.On, "PricesChanged", Pricing.Changed)
     end
+    local dui = rawget(_G, "DaylightUI")
+    if type(dui) == "table" and type(dui.On) == "function" then
+        pcall(dui.On, "AuctionPricesChanged", Pricing.Changed)
+    end
+    local v1 = auctionator()
+    auctionatorHeard = false
+    if v1 and type(v1.RegisterForDBUpdate) == "function" then
+        auctionatorHeard = pcall(v1.RegisterForDBUpdate, config.caller, Pricing.Changed)
+    end
+end
+
+CP:On("PLAYER_LOGIN", function() Pricing.Listen() end)
+
+-- An Auctionator without its update callback: its prices count as new once the auction
+-- house closes.
+CP:On("AUCTION_HOUSE_CLOSED", function()
+    if not auctionatorHeard and auctionator() then Pricing.Changed() end
 end)
 
 -- `guideItem` is the guide's { vendorPrice, soldByVendor } entry for the item.

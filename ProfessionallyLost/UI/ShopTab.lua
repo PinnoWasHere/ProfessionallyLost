@@ -212,12 +212,21 @@ end
 -- Said after the status line while the auction house is shut.
 ShopTab.SCAN_HINT = "scan at the auction house"
 
--- The Shop tab's status line follows the scan.
+-- The Shop tab's status line follows the scan. While another addon holds prices it
+-- names that addon, with Daylight UI's last sighting, and asks for no scan.
 local function scanSaid()
     local progress = Scan.ProgressText()
     if progress then return progress end
-    local last = Scan.LastTime()
     local now = GetServerTime and GetServerTime() or time()
+    local key, source = CP.Pricing.AddonSource()
+    if source then
+        local seen = key == "daylight" and CP.Pricing.DaylightScannedAt()
+        if seen then
+            return ("Prices from %s, updated %s ago"):format(source, CP.Pricing.FormatAge(math.max(0, now - seen)))
+        end
+        return "Prices from " .. source
+    end
+    local last = Scan.LastTime()
     local said = last and ("Last scan %s ago"):format(CP.Pricing.FormatAge(math.max(0, now - last)))
         or "No price scan yet"
     if not Scan.open then said = said .. "  ·  " .. ShopTab.SCAN_HINT end
@@ -236,6 +245,7 @@ local function scanRow()
 end
 
 Scan.OnChange(scanRow)
+CP.Pricing.OnChange(scanRow)
 ShopTab.Changed = scanRow
 
 -- One plan's rows to the current cap, the queue entries, and the target.

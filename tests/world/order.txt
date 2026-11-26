@@ -9,6 +9,8 @@ tests/world/gatherworld.lua
 tests/world/ahworld.lua
 tests/world/daylightworld.lua
 tests/world/mogulworld.lua
+tests/world/duiahworld.lua
+tests/world/auctionatorworld.lua
 tests/world/peerworld.lua
 tests/world/visual.lua
 tests/world/leakwatch.lua

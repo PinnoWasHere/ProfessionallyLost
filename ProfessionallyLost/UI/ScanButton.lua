@@ -4,8 +4,9 @@ if CP.stopped then return end
 -- The Scan prices button on the auction house window. It hangs under the window's bottom
 -- right corner as the window's child, so it moves, fades and raises with it and clicks
 -- land. It fades in when the auction house opens and pulses until clicked, or while a
--- full scan within the cooldown already exists. While a scan runs it shows the progress
--- and a click stops it; during the cooldown it shows the minutes left.
+-- full scan within the cooldown already exists. It never pulses while another addon
+-- holds prices (Pricing.AddonSource), since those come first. While a scan runs it shows
+-- the progress and a click stops it; during the cooldown it shows the minutes left.
 --
 -- The window: DaylightMogul's own (DaylightMogulMain) while it stands in for the auction
 -- house, else the game's AuctionHouseFrame, dressed by Daylight UI's skins or not. Mogul
@@ -60,10 +61,11 @@ function ScanButton.Label()
     return name
 end
 
--- True while the button should pulse: nothing runs, a full scan is allowed, and the
--- player hasn't clicked it this visit.
+-- True while the button should pulse: nothing runs, a full scan is allowed, the player
+-- hasn't clicked it this visit, and no other addon holds prices.
 function ScanButton.Wants()
     return not clicked and not Scan.Running() and Scan.CooldownLeft() == 0
+        and CP.Pricing.AddonSource() == nil
 end
 
 local function tooltip(self)
@@ -82,8 +84,9 @@ local function tooltip(self)
     else
         GameTooltip:AddLine(Scan.config.noFullLine, 1, 0.5, 0.4, true)
     end
-    if CP.Pricing.HasMogul() then
-        GameTooltip:AddLine("DaylightMogul's prices come first; these fill the rest.", 0.6, 0.6, 0.6, true)
+    local _, source = CP.Pricing.AddonSource()
+    if source then
+        GameTooltip:AddLine(("Prices come from %s first; this scan fills the rest."):format(source), 0.6, 0.6, 0.6, true)
     end
     local last = Scan.LastTime()
     if last then
@@ -170,3 +173,4 @@ CP:On("AUCTION_HOUSE_CLOSED", function()
 end)
 
 Scan.OnChange(function() ScanButton.Update() end)
+CP.Pricing.OnChange(function() ScanButton.Update() end)

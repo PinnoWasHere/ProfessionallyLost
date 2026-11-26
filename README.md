@@ -15,7 +15,7 @@ I got tired of alt tabbing for the free profession leveling guides or paying for
 - "Gather it yourself" mode tailors the guide dynamically around your current level/zone/profession skill level.
 - When this option is off, you are shown a Shop tab with the assumption you want to buy all the materials and powerlevel your chosen professions.
 - "Buy for guide" at a vendor buys the materials and patterns your guides need for the active step.
-- Auction prices come from DaylightMogul if you have it. Otherwise press Scan prices at the auction house.
+- Auction prices come from DaylightMogul, Daylight UI's Auction House or Auctionator, whichever you use. ProfLost's own Scan prices button at the auction house fills the gaps.
 - A Disenchant tab for enchanters that warns you when selling an item is worth more with semi-auto disenchanting.
 - A Gathering window that lists what to gather in your zone, grind spots, nearby zones and pattern vendors, with a route on the map and minimap for Herbalism and Mining whereas Skinning would get the top 3 grind spots in the zone for the crating material you want to gather/farm.
 - Tooltip lines and bag marks for items your guides need for your current guide step.

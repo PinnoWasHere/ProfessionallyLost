@@ -1,7 +1,8 @@
 local _, CP = ...
 if CP.stopped then return end
 
--- ProfLost's own auction price scan. DaylightMogul's prices win where it has one.
+-- ProfLost's own auction price scan, the last source Pricing reads. DaylightMogul,
+-- Daylight UI's Auction House and Auctionator win where they price an item.
 --
 -- A scan asks the game for every auction at once (C_AuctionHouse.ReplicateItems), then
 -- reads the list a slice a frame within a time budget, so a big auction house never stalls
