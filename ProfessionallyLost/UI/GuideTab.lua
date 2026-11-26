@@ -189,6 +189,10 @@ CP.GuideTab.LearnTip = learnTip
 -- waypoint goes.
 CP.GuideTab.LEARN_LABELS = { trainer = "Go to trainer", vendor = "Go to vendor", other = "Learn" }
 
+-- The All card button for a rank step, by who Guide.WaypointFor says to see.
+CP.GuideTab.GO_LABELS = { ["trainer"] = "Go to trainer", ["book vendor"] = "Go to vendor",
+                          ["quest giver"] = "Go to quest giver" }
+
 function CP.GuideTab.LearnLabel(recipe)
     local L = CP.GuideTab.LEARN_LABELS
     if not recipe then return L.other end
@@ -2270,6 +2274,8 @@ local function baseCard(live)
         end
         if st.rank then
             card.step = CP.Guide.StopText({ rank = st.rank })
+            local target, who = CP.Guide.WaypointFor({ rank = st.rank }, p)
+            card.go, card.goLabel, card.guide = target, target and CP.GuideTab.GO_LABELS[who], guide
             card.need, card.needColor = ("Skill capped at %d"):format(p.max), S.color.warn
             if st.levelShort then card.need = ("%s. %s"):format(card.need, st.levelShort.text) end
             return card
@@ -2438,7 +2444,9 @@ local function cardLabels(card)
     local learn = card.spell ~= nil and not card.learned and not card.unread
     local can = here and card.learned and card.spell
     local open = not here and (card.spell ~= nil or card.deskill == true)
-    local state = { here = here, learn = learn, can = can, open = open }
+    local go = card.go ~= nil and card.goLabel ~= nil
+    local state = { here = here, learn = learn, can = can, open = open, go = go }
+    if go then return { craft = card.goLabel }, state end
     if can and not card.enchant and CP.Crafting.ShowStrip() then return { making = true }, state end
     if learn and card.owned then
         if not card.inBags then return { craft = CP.GuideTab.FETCH_LABEL }, state end
@@ -2553,7 +2561,7 @@ local function initCard(btn, card)
     local b = btn.craft
     b:ClearAllPoints()
     b:SetPoint("BOTTOMRIGHT", -8, 4 + lift)
-    b:SetShown((learn or can or open) and true or false)
+    b:SetShown((learn or can or open or st.go) and true or false)
     btn.one:Hide()
     btn.avail:Hide()
     -- A batch of ours on this card's profession: the making strip in place of its buttons.
@@ -2577,7 +2585,11 @@ local function initCard(btn, card)
     b.learnTo, b.guide, b.openTo, b.tip, b.usePattern = nil, nil, nil, nil, nil
     btn.one.tip, btn.avail.tip = nil, nil
     b.label:SetText(labels.craft or "")
-    if learn and card.owned then
+    if st.go then
+        -- A rank step: the button sets the waypoint to its trainer, book vendor or quest giver.
+        b.learnTo, b.guide = card.go, card.guide
+        S.SetEnabled(b, true)
+    elseif learn and card.owned then
         -- The pattern is held: in the bags it is used through the secure overlay (PatternLearn.Enter);
         -- in the bank or mail it is fetched first.
         if card.inBags then
