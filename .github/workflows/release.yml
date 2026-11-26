@@ -1,8 +1,8 @@
 name: Release
 
-# Builds ProfessionallyLost-<tag>.zip with the BigWigs packager from a pushed v* tag and uploads it to
-# CurseForge (project id in the toc, token in the CF_API_KEY secret). The zip is also kept as a
-# workflow artifact. Packaging rules live in .pkgmeta.
+# Runs the tests, then builds ProfessionallyLost-<tag>.zip with the BigWigs packager from a pushed v* tag
+# and uploads it to CurseForge (project id in the toc, token in the CF_API_KEY secret). The zip is also
+# kept as a workflow artifact. Packaging rules live in .pkgmeta.
 
 on:
   push:
@@ -10,26 +10,41 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  test:
+    uses: ./.github/workflows/tests.yml
+
   package:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
+      - name: Tag matches the toc version
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(sed -n 's/^## Version:[[:space:]]*//p' ProfessionallyLost/ProfessionallyLost.toc | tr -d '\r' | head -n 1)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the toc version v$version"
+            exit 1
+          fi
+
       - name: Package
-        uses: BigWigsMods/packager@v2
+        uses: BigWigsMods/packager@01e8631a69c69d7654c788d152630d5fed9e3812 # v2.7.0
         with:
           args: -n "{package-name}-{project-version}"
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
 
       - name: Keep the zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ProfessionallyLost-zip
           path: .release/*.zip

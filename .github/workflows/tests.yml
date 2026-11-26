@@ -1,18 +1,20 @@
 name: Tests
 
-# The headless tests on the own fake game (tools/test.py), for every pull request and every push to main.
+# The headless tests on the own fake game (tools/test.py) and a Lua 5.1 compile of every addon file.
+# Runs for every pull request and every push to main, and the release workflow calls it first.
 
 on:
   pull_request:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: tests-${{ github.ref }}
+  group: tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -20,10 +22,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install LuaJIT
         run: sudo apt-get update -q && sudo apt-get install -y -q luajit
+
+      - name: Lua 5.1 compile
+        run: |
+          pip install lupa
+          python3 tools/lua51_check.py
 
       - name: Headless tests
         run: python3 tools/test.py --jobs 4
