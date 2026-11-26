@@ -59,6 +59,30 @@ def run_one(lua: str, test: str) -> tuple[int, list[str]]:
     return report(test, run.stdout + run.stderr)
 
 
+LOCATION = re.compile(r"((?:ProfessionallyLost|tests|tools)/[\w./-]+\.lua):(\d+)")
+
+
+def first_error(line: str) -> str:
+    """The message of one failure line, without the leading test file."""
+    return line.split(": ", 1)[-1].strip()
+
+
+def annotate(line: str) -> str:
+    """A GitHub error annotation for one failure line, with the line number when it names one."""
+    found = LOCATION.search(line)
+    where = f"file={found.group(1)},line={found.group(2)}" if found else f"file={line.split(': ', 1)[0]}"
+    message = first_error(line).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    return f"::error {where}::{message}"
+
+
+def write_summary(path: str, fails: list[str]) -> None:
+    """Appends the failed tests and their first error to the GitHub step summary file."""
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(f"### Headless tests: {len(fails)} failed\n\n")
+        for line in fails:
+            f.write(f"- `{line.split(': ', 1)[0]}`: {first_error(line)}\n")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("files", nargs="*", help="test files to run (default: every tests/headless/*_test.lua)")
@@ -76,6 +100,11 @@ def main() -> int:
     fails = [line for _, lines in results for line in lines]
     for line in fails:
         print("FAIL " + line)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if fails and summary:
+        write_summary(summary, fails)
+        for line in fails:
+            print(annotate(line))
     print(f"{len(tests)} files, {count} tests: {'FAIL' if fails else 'ok'}")
     return 1 if fails else 0
 
