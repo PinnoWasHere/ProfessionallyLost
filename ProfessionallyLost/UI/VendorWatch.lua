@@ -181,6 +181,7 @@ local function vendorPin(v, size)
     local f = pool[usedPins]
     if not f then
         f = CreateFrame("Frame")
+        CP.MapPins.Adopt(f)
         f.icon = f:CreateTexture(nil, "ARTWORK")
         f.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         local mask = f:CreateMaskTexture()
@@ -215,6 +216,13 @@ local function vendorPin(v, size)
         f.icon:SetTexture(first and C_Item.GetItemIconByID(first.item) or 134939)
     end
     f.vendor = v
+    return f
+end
+
+-- A vendor pin outside the pool, for tests.
+function VendorWatch.TestPin(v)
+    local f = vendorPin(v, 22)
+    usedPins = usedPins - 1
     return f
 end
 

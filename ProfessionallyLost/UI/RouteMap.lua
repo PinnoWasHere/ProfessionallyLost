@@ -132,6 +132,7 @@ local function pin(kind, size, color, stop)
     local f = pools[kind][used[kind]]
     if not f then
         f = CreateFrame("Frame")
+        CP.MapPins.Adopt(f)
         f.ring = f:CreateTexture(nil, "ARTWORK")
         f.ring:SetAllPoints()
         f.ring:SetTexture(DOT)
@@ -232,6 +233,7 @@ local function grindPin(kind, size, color, spot)
     local f = pools[kind][used[kind]]
     if not f then
         f = CreateFrame("Frame")
+        CP.MapPins.Adopt(f)
         f.icon = f:CreateTexture(nil, "ARTWORK")
         f.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         local mask = f:CreateMaskTexture()
