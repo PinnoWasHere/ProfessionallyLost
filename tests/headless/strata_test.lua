@@ -1,7 +1,8 @@
--- Every ProfLost window stands in Style.WINDOW_STRATA (HIGH): above the action bars,
--- nameplates and world markers in MEDIUM and below, under the game's and Daylight UI's
--- dialogs, menus and tooltips. Free and detached windows are toplevel, as Daylight UI's
--- Win.New makes its windows. Each window's shell stays under its content after every move.
+-- Every ProfLost window stands in Style.WINDOW_STRATA, Daylight UI's window strata (MEDIUM,
+-- Windows/Frame.lua Win.New), toplevel as Win.New makes its windows: a click brings any of them
+-- to the front, ours or Daylight UI's or the game's. A window coming out of hiding rises over
+-- the HUD in that strata (action bars, nameplates, world markers). Dialogs, menus and tooltips
+-- stay above. Each window's shell stays under its content after every move.
 
 local CP = ProfLost
 local S, W, P, GP = CP.Style, CP.Window, CP.Panel, CP.GatherPanel
@@ -64,11 +65,95 @@ local function windowed(frame, content, label)
     T.ok(skin and skin:GetFrameLevel() < content:GetFrameLevel(), label .. ": the shell under the content")
 end
 
-T.test("the window strata sits over the HUD and under dialogs, menus and tooltips", function()
+T.test("the window strata is Daylight UI's window strata, under dialogs, menus and tooltips", function()
+    T.eq(S.WINDOW_STRATA, "MEDIUM", "Win.New's strata (DaylightUI Windows/Frame.lua)")
     local own = rank(S.WINDOW_STRATA)
-    T.ok(own > rank("MEDIUM"), "over MEDIUM: action bars, nameplates, Daylight UI's windows")
     T.ok(own < rank("DIALOG"), "under DIALOG: the game's popups, Daylight UI's options and popups")
     T.ok(own < rank("FULLSCREEN_DIALOG") and own < rank("TOOLTIP"), "under menus and tooltips")
+end)
+
+-- A window made as Daylight UI's Win.New makes one (its vendor, bags, character window), or a
+-- game panel: MEDIUM, toplevel, under UIParent, shown and brought up as it opens.
+local function otherWindow()
+    local f = CreateFrame("Frame", nil, UIParent)
+    f:SetFrameStrata("MEDIUM")
+    f:SetToplevel(true)
+    f:SetSize(400, 540)
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 100, -100)
+    f:Show()
+    f:Raise()
+    World.onEnd(function() f:Hide() end)
+    return f
+end
+
+-- The events that run the windows' updates while the player plays.
+local function churn()
+    W.Update()
+    P:Refresh()
+    T.advance(0.5)
+end
+
+T.test("a click brings the guide window or another window to the front, and updates keep it there", function()
+    scene()
+    local other = otherWindow()
+    T.ok(Visual.Over(other, P.frame), "a window opened later stands over the guide")
+    Visual.Click(CP.GuideTab.ui.details)
+    T.ok(Visual.Over(P.frame, other), "a click on the guide brings it over the other window")
+    T.ok(Visual.Over(P.body, other), "its content with it")
+    churn()
+    T.ok(Visual.Over(P.frame, other), "and it stays there through updates")
+    Visual.Click(other)
+    T.ok(Visual.Over(other, P.frame), "a click on the other window brings it over the guide")
+    T.ok(Visual.Over(other, GP.sheet), "and over the attached gathering panel")
+    churn()
+    T.ok(Visual.Over(other, P.frame), "updates leave the guide under it")
+    Visual.Click(GP.body)
+    T.ok(Visual.Over(P.frame, other), "a click on the attached gathering panel brings the guide up")
+    Visual.Check("after clicks")
+end)
+
+T.test("a click brings the detached gathering panel, the guide or another window to the front", function()
+    scene()
+    detach()
+    local other = otherWindow()
+    T.ok(Visual.Over(other, GP.sheet), "a window opened later stands over the panel")
+    Visual.Click(GP.body)
+    T.ok(Visual.Over(GP.sheet, other), "a click on the panel brings it over the other window")
+    T.ok(Visual.Over(GP.body, other), "its content with it")
+    T.ok(Visual.Over(GP.grip, other), "and its grip")
+    churn()
+    T.ok(Visual.Over(GP.sheet, other), "it stays there through updates")
+    Visual.Click(P.body)
+    T.ok(Visual.Over(P.frame, GP.sheet), "a click on the guide brings it over the panel")
+    Visual.Click(other)
+    T.ok(Visual.Over(other, P.frame) and Visual.Over(other, GP.sheet), "the other window over both")
+    churn()
+    T.ok(Visual.Over(other, P.frame) and Visual.Over(other, GP.sheet), "updates leave both under it")
+    Visual.Check("detached, after clicks")
+end)
+
+T.test("an opening window rises over the HUD in its strata: action bars, nameplates, world markers", function()
+    scene()
+    -- A HUD piece in MEDIUM, high in the strata, as an action bar holder's buttons sit.
+    local bar = CreateFrame("Frame", nil, UIParent)
+    bar:SetFrameStrata("MEDIUM")
+    bar:SetFrameLevel(40)
+    bar:Show()
+    World.onEnd(function() bar:Hide() end)
+    W.Close()
+    T.advance(0.5)
+    W.Open()
+    T.advance(0.5)
+    T.ok(P.frame:IsVisible(), "the guide shows again")
+    T.ok(Visual.Over(P.frame, bar), "the guide over the bar")
+    T.ok(Visual.Over(P.body, bar), "its content over the bar")
+    T.ok(Visual.Over(GP.sheet, bar), "the attached gathering panel over the bar")
+    churn()
+    T.ok(Visual.Over(P.body, bar), "still over it after updates")
+    detach()
+    T.ok(Visual.Over(GP.sheet, bar), "the detached panel over the bar")
+    T.ok(Visual.Over(GP.body, bar), "its content over the bar")
+    Visual.Check("over the HUD")
 end)
 
 T.test("the free guide window, its step card and the attached gathering panel", function()

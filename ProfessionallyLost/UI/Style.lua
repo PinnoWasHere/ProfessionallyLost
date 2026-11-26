@@ -242,13 +242,21 @@ function Style.ClampTop(anchor, shown, left, right)
     anchor:SetClampRectInsets(-(left or 0), right or 0, 0, below)
 end
 
--- The strata every ProfLost window stands in. Action bars, nameplates and world markers draw
--- in MEDIUM and below, and so do Daylight UI's own windows. The game's and Daylight UI's
--- dialogs, popups and menus draw in DIALOG and up, and tooltips in TOOLTIP. HIGH sits
--- between the two.
-Style.WINDOW_STRATA = "HIGH"
+-- The strata every ProfLost window stands in: Daylight UI's window strata (Win.New's default
+-- in Windows/Frame.lua), which the game's panels share. Each window is toplevel, so a click
+-- brings it or any other window there to the front. A window coming out of hiding rises over
+-- the HUD in that strata (Style.Front). Dialogs, menus and tooltips draw in DIALOG and up.
+Style.WINDOW_STRATA = "MEDIUM"
 Style.STRATA = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6,
                  FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
+
+-- Brings a window to the front of its strata as it comes out of hiding, never under
+-- `least`, and puts the shells back under their frames.
+function Style.Front(frame, least)
+    if (frame:GetFrameLevel() or 0) < least then frame:SetFrameLevel(least) end
+    frame:Raise()
+    Style.Restack()
+end
 
 -- Puts every shell one level under its frame and its corner caps ten above, as Daylight
 -- UI makes them. A move of a frame to a very high or low level clamps its descendants'

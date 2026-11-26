@@ -501,12 +501,11 @@ function Window.SetPieceScale(v)
     if v then anchor:SetScale(v) end
 end
 
--- Stands the panel at the anchor, in its strata at its fresh frame level.
+-- Stands the panel at the anchor, in its strata. Its frame level is the client's: a click
+-- raises it, and Window.Release raises it as it comes out of hiding.
 function Window.Place()
-    panel:SetFrameStrata(CP.Style.WINDOW_STRATA)
+    if panel:GetFrameStrata() ~= CP.Style.WINDOW_STRATA then panel:SetFrameStrata(CP.Style.WINDOW_STRATA) end
     panel:SetToplevel(true)
-    panel:SetFrameLevel(Window.LEVEL)
-    CP.Style.Restack()
     panel:SetScale(Window.Scale())
     panel:SetAlpha(1)
     panel:ClearAllPoints()
@@ -529,7 +528,10 @@ function Window.Release()
         local standing = panel:IsShown()
         Window.Place()
         panel:Show()
-        if not standing then Panel:Refresh() end
+        if not standing then
+            CP.Style.Front(panel, Window.LEVEL)
+            Panel:Refresh()
+        end
     else
         panel:Hide()
     end
