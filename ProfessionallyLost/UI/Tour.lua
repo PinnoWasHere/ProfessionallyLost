@@ -66,26 +66,42 @@ Tour.WORDS = {
     profession = { title = "Your profession",
         text = "The dropdown picks the profession the guide shows. %s shows one profession's steps, %s a card for each profession." },
     steps = { title = "The steps",
-        text = "What to craft from your skill up to the cap, in order. Click a step to see it in full below." },
+        text = "What to craft from your skill up to the cap, in order. Click a step to see it in full below.",
+        key = "Click a step to see it in full below" },
     skillups = { title = "Available Skill Ups",
-        text = "Crafts your spare loot can make right now for skill points. It never uses materials your guide needs, so your steps stay covered. %s makes one." },
+        text = "Crafts your spare loot can make right now for skill points. It never uses materials your guide needs, so your steps stay covered. %s makes one.",
+        key = "never uses materials your guide needs" },
     details = { title = "The step card",
-        text = "The picked step: its materials, what you have and what you still need, and the button to craft it or open the profession." },
+        text = "The picked step: its materials, what you have and what you still need, and the button to craft it or open the profession.",
+        key = "what you still need" },
     shop = { title = "Shop",
         text = "Everything the guide needs you to buy, priced from the auction house. Buy it there and the rows tick off.",
+        key = "Everything the guide needs you to buy",
         hidden = "With %s off, the guide plans by auction house prices and the %s tab lists what to buy." },
     gather = { title = "Gathering window",
         text = "What you can gather in this zone, with a route on the map. %s gathers what your guides need.",
-        none = "Once you have a gathering profession, this window lists what to gather in your zone and draws a route." },
+        key = "a route on the map",
+        none = "Once you have a gathering profession, this window lists what to gather in your zone and draws a route.",
+        noneKey = "what to gather in your zone" },
     mode = { title = "Follow the guide or Farm",
-        text = "This menu switches the route. %s gathers what your guides need; %s gathers what you pick, for gold." },
+        text = "This menu switches the route. %s gathers what your guides need; %s gathers what you pick, for gold.",
+        key = "for gold" },
     settings = { title = "Settings",
-        text = "Right-click the title for the settings. %s there shows this tour again." },
+        text = "Right-click the title for the settings. %s there shows this tour again.",
+        key = "Right-click the title for the settings" },
     skipped = "Tour skipped. %s in Professionally Lost's settings shows it again.",
     replay = "Take the tour",
 }
 
 local W = Tour.WORDS
+
+-- A card's text with its key phrase in the accent, before the %s slots fill.
+local function mark(card, text, key)
+    local from, to = text:find(key or card.key, 1, true)
+    if not from then return text end
+    local lit = pop(key or card.key):gsub("%%", "%%%%")
+    return text:sub(1, from - 1) .. lit .. text:sub(to + 1)
+end
 
 -- What the tour changed, and what it found before: set by the first card, put back at the end.
 local before
@@ -160,23 +176,25 @@ Tour.STEPS = {
       text = function() return W.profession.text:format(pop(Window.VIEW_WORDS.one), pop(Window.VIEW_WORDS.all)) end,
       enter = openView, settle = Tour.SETTLE,
       part = function() return shown(Window.pickButton), shown(Window.switchButton) end },
-    { id = "steps", title = W.steps.title, text = W.steps.text,
+    { id = "steps", title = W.steps.title,
+      text = function() return mark(W.steps, W.steps.text) end,
       enter = guideStop, settle = Tour.SETTLE,
       part = function()
           if not CP.GuideTab.ui.live then return nil end
           return shown(CP.GuideTab.ui.scroll)
       end },
     { id = "skillups", title = W.skillups.title,
-      text = function() return W.skillups.text:format(pop("Craft")) end,
+      text = function() return mark(W.skillups, W.skillups.text):format(pop("Craft")) end,
       enter = guideStop, settle = Tour.SETTLE,
       part = function() return shown(CP.GuideTab.ui.impromptu) end },
-    { id = "details", title = W.details.title, text = W.details.text,
+    { id = "details", title = W.details.title,
+      text = function() return mark(W.details, W.details.text) end,
       enter = guideStop, settle = Tour.SETTLE,
       part = function() return shown(CP.GuideTab.ui.details) end },
     { id = "shop", title = W.shop.title,
       text = function()
           local tab = Panel.tabs.shop
-          if tab and tab.content:IsVisible() then return W.shop.text end
+          if tab and tab.content:IsVisible() then return mark(W.shop, W.shop.text) end
           return W.shop.hidden:format(pop(CP.Settings.Find("collect").label), pop(W.shop.title))
       end,
       enter = function() openView(); pickTab("shop") end, settle = Tour.SETTLE,
@@ -188,8 +206,8 @@ Tour.STEPS = {
       end },
     { id = "gather", title = W.gather.title,
       text = function()
-          if not gathering() then return W.gather.none end
-          return W.gather.text:format(pop(CP.GatherList.MODE_LABEL.level))
+          if not gathering() then return mark(W.gather, W.gather.none, W.gather.noneKey) end
+          return mark(W.gather, W.gather.text):format(pop(CP.GatherList.MODE_LABEL.level))
       end,
       enter = openGather, settle = Tour.GATHER_SETTLE,
       part = function()
@@ -197,14 +215,14 @@ Tour.STEPS = {
           return shown(GP.sheet)
       end },
     { id = "mode", title = W.mode.title,
-      text = function() return W.mode.text:format(pop(CP.GatherList.MODE_LABEL.level), pop("Farm")) end,
+      text = function() return mark(W.mode, W.mode.text):format(CP.GatherList.MODE_LABEL.level, pop("Farm")) end,
       enter = openGather, settle = Tour.SETTLE,
       part = function()
           if not (gathering() and GP.Showing()) then return nil end
           return shown(CP.GatherList.head.filter)
       end },
     { id = "settings", title = W.settings.title,
-      text = function() return W.settings.text:format(pop(W.replay)) end,
+      text = function() return mark(W.settings, W.settings.text):format(pop(W.replay)) end,
       part = function() return shown(Panel.logo), shown(Panel.title) end },
 }
 
