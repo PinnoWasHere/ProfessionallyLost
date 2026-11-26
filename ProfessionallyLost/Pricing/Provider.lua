@@ -6,19 +6,21 @@ if CP.stopped then return end
 --
 -- The auction price comes from the first source in `config.order` that prices the item:
 -- DaylightMogul, Daylight UI's Auction House (DaylightUI.AuctionPrices), Auctionator
--- (its public v1 API), then ProfLost's own scan (Scan.lua). Each addon is looked up at
--- call time, so one that publishes late or switches off is followed.
+-- (its public v1 API), ProfLost's own scan (Scan.lua), then Glowey's Recipes (its public
+-- DaylightRecipes.API). Each addon is looked up at call time, so one that publishes late
+-- or switches off is followed.
 
 local Pricing = {}
 CP.Pricing = Pricing
 
 Pricing.config = {
-    order = { "mogul", "daylight", "auctionator", "scan" },
+    order = { "mogul", "daylight", "auctionator", "scan", "glowey" },
     names = {
         mogul = "DaylightMogul",
         daylight = "Daylight UI's Auction House",
         auctionator = "Auctionator",
         scan = "ProfLost's scan",
+        glowey = "Glowey's Recipes",
     },
     mogulSource = "market",
     caller = "ProfessionallyLost",   -- Auctionator's callerID
@@ -56,6 +58,13 @@ local function auctionator()
     local a = rawget(_G, "Auctionator")
     local v1 = type(a) == "table" and type(a.API) == "table" and a.API.v1
     return type(v1) == "table" and type(v1.GetAuctionPriceByItemID) == "function" and v1 or nil
+end
+
+-- Glowey's Recipes' public API (DaylightRecipes.API, major 1) while it is loaded.
+local function glowey()
+    local g = rawget(_G, "DaylightRecipes")
+    local api = type(g) == "table" and g.API
+    return type(api) == "table" and type(api.Price) == "function" and api or nil
 end
 
 -- Each source has present(), price(id) -> copper and its age in seconds (nil when the
@@ -112,6 +121,26 @@ sources.scan = {
     data = function() return CP.Scan.HasData() end,
 }
 
+sources.glowey = {
+    present = function() return glowey() ~= nil end,
+    price = function(id)
+        local api = glowey()
+        if not api then return nil end
+        local price = positive(pcall(api.Price, id))
+        if not price then return nil end
+        local age
+        if type(api.PriceAge) == "function" then
+            local ok, seconds = pcall(api.PriceAge, id)
+            if ok and type(seconds) == "number" then age = math.max(0, seconds) end
+        end
+        return price, age
+    end,
+    data = function()
+        local api = glowey()
+        return api ~= nil and type(api.HasPrices) == "function" and select(2, pcall(api.HasPrices)) == true
+    end,
+}
+
 local function holdsData(src)
     if not src.present() then return false end
     if src.data then return src.data() == true end
@@ -134,10 +163,12 @@ local function auctionPrice(itemID)
     return nil
 end
 
--- The first other addon that holds prices: its key and name, or nil.
+-- The first addon ahead of ProfLost's scan in the order that holds prices: its key and
+-- name, or nil. Addons after the scan only fill what it lacks.
 function Pricing.AddonSource()
     for _, key in ipairs(config.order) do
-        if key ~= "scan" and holdsData(sources[key]) then return key, config.names[key] end
+        if key == "scan" then return nil end
+        if holdsData(sources[key]) then return key, config.names[key] end
     end
     return nil
 end
@@ -204,6 +235,9 @@ function Pricing.Listen()
     if type(dui) == "table" and type(dui.On) == "function" then
         pcall(dui.On, "AuctionPricesChanged", Pricing.Changed)
     end
+    local g = glowey()
+    local gOn = g and rawget(_G, "DaylightRecipes").API.OnPrices
+    if type(gOn) == "function" then pcall(gOn, Pricing.Changed) end
     local v1 = auctionator()
     auctionatorHeard = false
     if v1 and type(v1.RegisterForDBUpdate) == "function" then
