@@ -1222,6 +1222,46 @@ end
 -- beasts that mostly yield another leather don't fill a spot.
 Gather.SKIN_MIN_CHANCE = 0.35
 
+-- A minor skinning material (hides, scales) is one whose typical chance, the median over
+-- every creature in the data that yields it, is under SKIN_MIN_CHANCE. A creature counts
+-- for it at this share of that typical chance or better.
+Gather.SKIN_MIN_SHARE = 0.5
+
+-- Each skinning material's typical chance per skin, from the data's farm index. Built once
+-- per data table.
+local skinTypical, skinTypicalData
+
+local function typicalSkin(item)
+    local D = CP.GatherData
+    if skinTypicalData ~= D then
+        skinTypical, skinTypicalData = {}, D
+        local farm, lists = D.Index("farm") or {}, {}
+        for i = 1, #farm, 5 do
+            if farm[i + 2] == Gather.SKINNING then
+                local list = lists[farm[i]] or {}
+                lists[farm[i]] = list
+                list[#list + 1] = farm[i + 3]
+            end
+        end
+        for id, list in pairs(lists) do
+            table.sort(list)
+            local n = #list
+            skinTypical[id] = n % 2 == 1 and list[(n + 1) / 2] or (list[n / 2] + list[n / 2 + 1]) / 2
+        end
+    end
+    return skinTypical[item]
+end
+
+-- The lowest chance, in percent, at which a creature counts as a skinning source of `item`:
+-- SKIN_MIN_CHANCE for a leather, less for a minor material. A material the data lacks
+-- takes SKIN_MIN_CHANCE.
+function Gather.SkinFloor(item)
+    local min = Gather.SKIN_MIN_CHANCE * 100
+    local typical = typicalSkin(item)
+    if not typical or typical >= min then return min end
+    return typical * Gather.SKIN_MIN_SHARE
+end
+
 -- Other creature loot (meat, cloth, ...) forms a grind spot only at this chance per kill
 -- or better. Fish never do; they come from Fishing.
 Gather.LOOT_MIN_CHANCE = 0.25
@@ -1393,7 +1433,7 @@ end
 Gather.SkinMobs = skinMobs
 
 -- Skinning sources in `zone` for a skinning `rank`: { [itemID] = { source } }, each source
--- a creature common enough to farm that yields the item at SKIN_MIN_CHANCE or better.
+-- a creature common enough to farm that yields the item at its SkinFloor or better.
 -- SKIN_EXCLUDE items have none. A source not from the data carries `how` and `skins`.
 local function skinSources(zone, rank)
     local out = {}
@@ -1403,7 +1443,7 @@ local function skinSources(zone, rank)
         local need = lo and Gather.CorpseSkill(lo)
         if loot and need and rank >= need and Gather.Gives(entry, Gather.SKINNING) and Gather.Farmable("mobs", entry, zone) then
             for _, l in ipairs(loot) do
-                if l[2] >= Gather.SKIN_MIN_CHANCE * 100 and not Gather.SKIN_EXCLUDE[l[1]] then
+                if l[2] > 0 and l[2] >= Gather.SkinFloor(l[1]) and not Gather.SKIN_EXCLUDE[l[1]] then
                     out[l[1]] = out[l[1]] or {}
                     table.insert(out[l[1]], { kind = "mob", entry = entry, name = name, minLevel = lo,
                         maxLevel = hi, skill = need, skillMax = Gather.CorpseSkill(hi), chance = l[2], avg = l[3],
@@ -1499,7 +1539,7 @@ function Gather.ContinentSkins(zones, skills, level, side)
 end
 
 -- Route rows for grind spots: one per ticked skinning material, its sources the creatures
--- that yield it at SKIN_MIN_CHANCE or better. Levelling takes the materials the
+-- that yield it at its SkinFloor or better. Levelling takes the materials the
 -- checklist `items` still need; farming every ticked material, without creatures more
 -- than FARM_SAFE_LEVELS above the player, and reads no guide need.
 function Gather.SkinRows(zone, skills, items)
@@ -1566,7 +1606,6 @@ function Gather.SkinReason(zone, skills, items)
     if not rank then return "no Skinning" end
     if #Gather.SkinRows(zone, skills, items) > 0 then return nil end
     local data, inside, skinnable, lowest = 0, 0, 0, nil
-    local best, bestItem = 0, nil
     for entry in pairs(skinMobs(zone)) do
         local loot = Gather.SkinLoot(entry)
         local _, lo = Gather.MobInfo(entry)
@@ -1577,11 +1616,6 @@ function Gather.SkinReason(zone, skills, items)
                 local need = Gather.CorpseSkill(lo)
                 if rank >= need then
                     skinnable = skinnable + 1
-                    for _, l in ipairs(loot) do
-                        if l[2] > best and not Gather.SKIN_EXCLUDE[l[1]] and not Gather.SkinSkipped(l[1]) then
-                            best, bestItem = l[2], l[1]
-                        end
-                    end
                 else
                     lowest = math.min(lowest or need, need)
                 end
@@ -1593,21 +1627,19 @@ function Gather.SkinReason(zone, skills, items)
     if skinnable == 0 then
         return ("%d skinnable beasts, all need Skinning %d or more (yours %d)"):format(inside, lowest, rank)
     end
-    local min = Gather.SKIN_MIN_CHANCE * 100
     local ticked, unticked = {}, {}
     for item, list in pairs(skinSources(zone, rank)) do
         if Gather.SkinSkipped(item) then unticked[#unticked + 1] = item else ticked[item] = list end
     end
     if not next(ticked) then
-        if #unticked > 0 and not bestItem then
+        if #unticked > 0 then
             table.sort(unticked)
             local names = {}
             for i, item in ipairs(unticked) do names[i] = itemName(item) end
-            return ("%d skinnable beasts; every leather here at %d%%+ is unticked (%s)"):format(skinnable, min,
+            return ("%d skinnable beasts; every material here is unticked (%s)"):format(skinnable,
                 table.concat(names, ", "))
         end
-        local top = bestItem and (" (best %s %.0f%%)"):format(itemName(bestItem), best) or ""
-        return ("%d skinnable beasts; none yields a ticked leather at %d%%+%s"):format(skinnable, min, top)
+        return ("%d skinnable beasts; none yields a material worth a grind spot"):format(skinnable)
     end
     if Gather.RouteFarming() then
         local level, low, n = Gather.PlayerLevel(), math.huge, 0

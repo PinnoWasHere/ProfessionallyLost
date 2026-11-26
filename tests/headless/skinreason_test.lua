@@ -70,14 +70,14 @@ T.test("follow the guide: the guides need none of the zone's leathers", function
     end)
 end)
 
-T.test("farming: no ticked leather at the threshold", function()
+T.test("farming: every material here is unticked", function()
     scene({ mode = "farm", ticked = { [THICK] = true } }, function()
-        -- Durotar has no Thick Leather; its menu's 35%+ leathers are unticked.
-        has(GL.SkinReason(DUROTAR), "skinnable beasts; none yields a ticked leather at 35%+")
+        -- Durotar has no Thick Leather; every material its menu lists is unticked.
+        has(GL.SkinReason(DUROTAR), "skinnable beasts; every material here is unticked (")
     end)
     scene({ mode = "farm", ticked = { [783] = true } }, function()
-        -- Light Hide drops at 5% or so: listed with its best chance.
-        has(GL.SkinReason(DUROTAR), "none yields a ticked leather at 35%+ (best ")
+        -- Light Hide drops at 5% or so, from the creatures that yield it most.
+        T.eq(GL.SkinReason(DUROTAR), nil, "Light Hide forms grind spots")
     end)
 end)
 

@@ -1,6 +1,6 @@
 -- The gathering panel lists the map's own grind spots: the same spots under the same
 -- numbers, each naming its creatures and levels. Farm lists no guide item. Follow the
--- guide lists the guide's items, without a leather no creature here drops often. Scene:
+-- guide lists the guide's items, a hide too, though no creature here skins it often. Scene:
 -- Stonetalon's Charred Vale, Skinning 233, the guide short of Heavy Leather.
 
 local CP = ProfLost
@@ -96,7 +96,7 @@ local function itemIDs(lines)
     return ids
 end
 
-T.test("Farm lists no guide item; Follow the guide leaves out a leather that is rare here", function()
+T.test("Farm lists no guide item; Follow the guide lists a hide from the creatures that yield it most", function()
     scene("farm", function()
         local lines = settled()
         T.eq(itemIDs(lines), {}, "Farm: grind spots only")
@@ -108,7 +108,7 @@ T.test("Farm lists no guide item; Follow the guide leaves out a leather that is 
     scene(nil, function()
         local ids = itemIDs(settled())
         T.ok(ids[MEDIUM], "Medium Leather drops often in Stonetalon")
-        T.eq(ids[HEAVY_HIDE], nil, "Heavy Hide never reaches the grind-spot chance here")
+        T.ok(ids[HEAVY_HIDE], "Heavy Hide is listed though no creature here skins it at 35%")
         for _, l in ipairs(GL.Drawn()) do
             T.ok(not (l.text or ""):find("Rare here", 1, true), "no line about it either")
         end

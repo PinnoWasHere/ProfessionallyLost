@@ -1523,15 +1523,16 @@ function GatherList.SpotLines(zone)
     return out, table.concat(sig, ";")
 end
 
--- A skinning source under Gather.SKIN_MIN_CHANCE forms no grind spot, so the list
--- leaves it out, and a leather with no other source here is not listed at all.
-local function rare(src)
-    return src.kind == "mob" and src.prof == Gather.SKINNING and (src.chance or 0) < Gather.SKIN_MIN_CHANCE * 100
+-- A skinning source under its material's Gather.SkinFloor forms no grind spot, so the list
+-- leaves it out, and a material with no other source here is not listed at all.
+local function rare(src, floor)
+    return src.kind == "mob" and src.prof == Gather.SKINNING and (src.chance or 0) < floor
 end
 
 function GatherList.Listed(row)
+    local floor = Gather.SkinFloor(row.itemID)
     for _, src in ipairs(row.sources or {}) do
-        if not rare(src) then return true end
+        if not rare(src, floor) then return true end
     end
     return false
 end
@@ -1545,8 +1546,9 @@ function GatherList.SourceLines(row, zone)
     if zone then zw, zh = CP.Gather.ZoneSize(zone) end
     local z = zw and { w = zw, h = zh }
     local ranked, skills = {}, Gather.Skills()
+    local floor = Gather.SkinFloor(row.itemID)
     for _, src in ipairs(row.sources) do
-        if not rare(src) then ranked[#ranked + 1] = { src = src, yield = z and perClear(zone, src) or nil } end
+        if not rare(src, floor) then ranked[#ranked + 1] = { src = src, yield = z and perClear(zone, src) or nil } end
     end
     table.sort(ranked, function(a, b)
         local ya, yb = a.yield or -1, b.yield or -1
