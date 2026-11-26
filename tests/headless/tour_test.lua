@@ -148,12 +148,12 @@ end)
 
 -- R-01: the first open -----------------------------------------------------------------------
 
-T.test("the first open of the guide window runs the tour once, key proflost, 8 stops, mouse through", function()
+T.test("the first open of the guide window runs the tour once, key proflost, 9 stops, mouse through", function()
     local E = scene()
     open()
     T.eq(E.runs, 1)
     T.eq(E.opts.key, "proflost")
-    T.eq(#E.list, 8)
+    T.eq(#E.list, 9)
     T.eq(E.opts.through, true, "the mouse reaches the window")
     T.ok(E.opts.skipped:find("[Take the tour]", 1, true), E.opts.skipped)
     T.ok(Tour.Running())
@@ -201,14 +201,14 @@ T.test("Skip tour saves tourSeen too", function()
     T.eq(E.runs, 1)
 end)
 
--- R-03: the 8 cards ----------------------------------------------------------------------------
+-- R-03: the 9 cards ----------------------------------------------------------------------------
 
-T.test("the 8 cards, in order, each lighting its part", function()
+T.test("the 9 cards, in order, each lighting its part", function()
     local E = scene()
     open()
     local ids = {}
     for i, step in ipairs(E.list) do ids[i] = step.id end
-    T.eq(ids, { "welcome", "profession", "steps", "details", "shop", "gather", "mode", "settings" })
+    T.eq(ids, { "welcome", "profession", "steps", "skillups", "details", "shop", "gather", "mode", "settings" })
     for _, step in ipairs(E.list) do
         T.eq(step.title, Tour.WORDS[step.id].title, step.id)
         T.ok(type(step.text) == "string" or type(step.text) == "function", step.id .. " text")
@@ -228,6 +228,11 @@ T.test("the 8 cards, in order, each lighting its part", function()
     nextCard(E)
     T.eq(E.Step().part(), CP.GuideTab.ui.scroll, "the step list")
     T.eq(P.current, "guide")
+
+    nextCard(E)
+    T.eq(E.Step().part(), CP.GuideTab.ui.impromptu, "the Available Skill Ups area")
+    T.ok(E.Step().text():find("never uses materials your guide needs", 1, true), "says it spares the guide's materials")
+    T.ok(E.Step().text():find("[Craft]", 1, true), "button name in Pop's accent")
 
     nextCard(E)
     T.eq(E.Step().part(), CP.GuideTab.ui.details, "the details box")
@@ -258,7 +263,7 @@ end)
 T.test("Back to a guide card switches back to the Guide tab", function()
     local E = scene()
     open()
-    for _ = 1, 4 do nextCard(E) end
+    for _ = 1, 5 do nextCard(E) end
     T.eq(P.current, "shop")
     E.Back()
     T.eq(E.Step().id, "details")
@@ -278,10 +283,10 @@ T.test("with no profession, no gathering skill and no Shop tab, those cards sit 
         if step.part and step.part() == nil then missing[#missing + 1] = step.id end
         T.ok(step.text == nil or type(step.text) == "string" or #step.text() > 0, step.id .. " keeps its text")
     end
-    T.eq(missing, { "steps", "details", "shop", "gather", "mode" })
+    T.eq(missing, { "steps", "skillups", "details", "shop", "gather", "mode" })
     T.ok(not GP.Showing(), "no gathering panel opened without a gathering skill")
-    T.eq(Tour.WORDS.gather.none, E.list[6].text(), "the gathering card says what the window needs")
-    T.ok(E.list[5].text():find("[Gather it yourself]", 1, true), "the Shop card says where Shop comes from")
+    T.eq(Tour.WORDS.gather.none, E.list[7].text(), "the gathering card says what the window needs")
+    T.ok(E.list[6].text():find("[Gather it yourself]", 1, true), "the Shop card says where Shop comes from")
     E.Next()
     T.eq(seen(), true, "the tour reaches its end")
 end)
@@ -365,7 +370,7 @@ for _, how in ipairs({ "done", "skip", "fight", "close", "stop" }) do
         T.eq(E.runs, 1)
         T.eq(W.Mode(), "one", "the tour shows One view")
         T.ok(not P.folded, "unfolded")
-        for _ = 1, 6 do nextCard(E) end
+        for _ = 1, 7 do nextCard(E) end
         T.ok(GP.Showing(), "the gathering panel is out")
         T.eq(CP.db.routeMode, nil, "in Follow the guide")
         ENDS[how](E)

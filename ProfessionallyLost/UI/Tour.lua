@@ -67,6 +67,8 @@ Tour.WORDS = {
         text = "The dropdown picks the profession the guide shows. %s shows one profession's steps, %s a card for each profession." },
     steps = { title = "The steps",
         text = "What to craft from your skill up to the cap, in order. Click a step to see it in full below." },
+    skillups = { title = "Available Skill Ups",
+        text = "Crafts your spare loot can make right now for skill points. It never uses materials your guide needs, so your steps stay covered. %s makes one." },
     details = { title = "The step card",
         text = "The picked step: its materials, what you have and what you still need, and the button to craft it or open the profession." },
     shop = { title = "Shop",
@@ -164,6 +166,10 @@ Tour.STEPS = {
           if not CP.GuideTab.ui.live then return nil end
           return shown(CP.GuideTab.ui.scroll)
       end },
+    { id = "skillups", title = W.skillups.title,
+      text = function() return W.skillups.text:format(pop("Craft")) end,
+      enter = guideStop, settle = Tour.SETTLE,
+      part = function() return shown(CP.GuideTab.ui.impromptu) end },
     { id = "details", title = W.details.title, text = W.details.text,
       enter = guideStop, settle = Tour.SETTLE,
       part = function() return shown(CP.GuideTab.ui.details) end },
