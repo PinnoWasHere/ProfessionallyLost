@@ -103,7 +103,8 @@ local function cost(guide, recipe)
 end
 
 -- The impromptu crafts for `live` (Plan.Current or Plan.Shut), best first, at most `limit`:
--- { { spell, recipe, name, crafts, points, perCraft } }. `spell` is the player's own spell.
+-- { { spell, recipe, name, crafts, now, points, buy, perCraft } }. `spell` is the player's own
+-- spell. `now` is how many the bags make before buying; `buy` is what the crafts still need bought.
 -- Recipes the plan has a step for are left to the step card.
 function Impromptu.List(live, limit, needs)
     local guide, p = live and live.guide, live and live.prof
@@ -138,9 +139,11 @@ function Impromptu.List(live, limit, needs)
         if ok and cover >= 1 then
             local n, pts = expected(r, p.skill, p.max, cover)
             if n > 0 then
-                local buy = {}
+                local buy, now = {}, n
                 for _, pair in ipairs(vendor) do
-                    local short = n * pair[2] - (C_Item.GetItemCount(pair[1]) or 0)
+                    local held = C_Item.GetItemCount(pair[1]) or 0
+                    now = math.min(now, math.floor(held / pair[2]))
+                    local short = n * pair[2] - held
                     if short > 0 then
                         local name = CP.ItemName(pair[1])
                         if not name or name == "" then name = nil end
@@ -148,7 +151,7 @@ function Impromptu.List(live, limit, needs)
                     end
                 end
                 out[#out + 1] = { spell = live.alias and live.alias[id] or id, guideID = id, recipe = r, name = r.name,
-                                  crafts = n, points = pts, buy = buy,
+                                  crafts = n, now = now, points = pts, buy = buy,
                                   perCraft = CP.Guide.Chance(r, p.skill) * (r.ups or 1), cost = cost(guide, r) }
             end
         end
@@ -164,8 +167,8 @@ end
 
 -- "x4  ·  ~3 pts  ·  buy 4 Coarse Thread" for a row. With `card`, the All view's short line
 -- "Heavy Silk Bandage x23 · ~7.2 pts", which leaves the buy list to the Single view. The
--- optional `fits(text)` says whether a line fits its room; when it does not, the name is
--- cut short with an ellipsis, so the count and points always show.
+-- optional `fits(text)` says whether a line fits its room. When it does not, a card's name or
+-- a row's buy list is cut short with an ellipsis, so the count and points always show.
 function Impromptu.Info(item, card, fits)
     local pts = math.floor(item.points * 10 + 0.5) / 10
     local text = pts == math.floor(pts) and ("%d"):format(pts) or ("%.1f"):format(pts)
@@ -180,6 +183,19 @@ function Impromptu.Info(item, card, fits)
         return line
     end
     local out = ("x%d  ·  ~%s pts"):format(item.crafts, text)
-    for _, b in ipairs(item.buy or {}) do out = out .. ("  ·  buy %d %s"):format(b.count, b.name) end
-    return out
+    local lead = "  ·  buy"
+    local tail = ""
+    for _, b in ipairs(item.buy or {}) do tail = tail .. ("%s %d %s"):format(lead, b.count, b.name) end
+    local line = out .. tail
+    while fits and tail ~= "" and not fits(line) do
+        tail = tail:gsub("[%z\1-\127\194-\244][\128-\191]*$", "")   -- one whole character
+        local kept = tail:gsub("[%s·]+$", "")
+        if #kept <= #lead then
+            -- "buy…" is the least that says something must be bought; the tooltip lists it.
+            local least = out .. lead .. "…"
+            return fits(least) and least or out
+        end
+        line = out .. kept .. "…"
+    end
+    return line
 end

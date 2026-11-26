@@ -146,8 +146,26 @@ T.test("with the window shut, an impromptu row's button opens the profession", f
     end
 end)
 
+-- The window wide enough for a row's whole buy list beside its name, at the screen's left.
+-- A narrower row cuts the buy list first (impromptu_rows_test).
+local WIDE = 640
+local function wide()
+    for _, key in ipairs({ "windowWidth", "windowLocked", "windowPoint", "guideSteps" }) do World.set(CP.db, key, CP.db[key]) end
+    local point = CP.db.windowPoint
+    World.onEnd(function()
+        CP.db.windowPoint = point
+        CP.Window.PlaceAnchor()
+    end)
+    CP.db.windowLocked = false
+    CP.db.windowPoint = { "TOPLEFT", "BOTTOMLEFT", 100, 1000 }
+    CP.Window.PlaceAnchor()
+    CP.Window.Resize(WIDE, CP.Panel.frame:GetHeight())
+    T.advance(1)
+end
+
 T.test("vendor goods never limit an impromptu craft; the row says what to buy", function()
     scene()
+    wide()
     local leather = need(LIGHT_LEATHER)
     CraftWorld.SetBag(LIGHT_LEATHER, leather + SPARE)
     T.advance(1)
@@ -234,6 +252,7 @@ end
 
 T.test("Cooking: spare meat, an egg and a fish each list a craft; vendor spice says what to buy", function()
     cookScene()
+    wide()
     local area = GT.ui.impromptu
     T.ok(area ~= nil and area:IsShown(), "the Cooking guide has an impromptu area")
     if not area then return end

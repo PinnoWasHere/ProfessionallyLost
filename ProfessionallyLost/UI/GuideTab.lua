@@ -547,8 +547,12 @@ end
 -- when empty. Its rows pick nothing in the plan.
 CP.GuideTab.IMPROMPTU_EMPTY = "Nothing to craft from your bags right now."
 CP.GuideTab.IMPROMPTU_TIP = "Spare loot in your bags makes %d. Your guides don't need these materials."
+CP.GuideTab.IMPROMPTU_BUY_TIP = "Buy first: %s."
 CP.GuideTab.IMPROMPTU_CRAFT_W = 64
 CP.GuideTab.IMPROMPTU_TITLE = "Available Skill Ups"
+
+-- The least room a row keeps for its recipe name; the info column gives way first.
+CP.GuideTab.IMPROMPTU_NAME_MIN = 110
 
 -- The divider and the heading above the rows, with room above the divider.
 local IMPROMPTU_HEAD_H = 28
@@ -560,6 +564,9 @@ local function impromptuTip(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText(it.name, 1, 1, 1)
     GameTooltip:AddLine(CP.GuideTab.IMPROMPTU_TIP:format(it.crafts), nil, nil, nil, true)
+    local buy = {}
+    for _, b in ipairs(it.buy or {}) do buy[#buy + 1] = ("%d %s"):format(b.count, b.name) end
+    if #buy > 0 then GameTooltip:AddLine(CP.GuideTab.IMPROMPTU_BUY_TIP:format(table.concat(buy, ", ")), nil, nil, nil, true) end
     GameTooltip:Show()
 end
 
@@ -623,6 +630,23 @@ local function buildImpromptu(c)
     ui.impromptu = area
 end
 
+-- The widest info column row `r` allows beside `name`: the row less its edges, the Craft
+-- button and the gaps, less the name's own width up to IMPROMPTU_NAME_MIN. Nil before layout.
+local function infoRoom(r, name)
+    local left, right = r:GetLeft(), r:GetRight()
+    if not (left and right) or right <= left then return nil end
+    local C = CP.GuideTab.COLUMNS
+    local free = right - left - C.left - C.edge * 4 - (r.craft:GetWidth() or CP.GuideTab.IMPROMPTU_CRAFT_W)
+    return free - math.min(S.Measure(name, "body"), CP.GuideTab.IMPROMPTU_NAME_MIN)
+end
+
+-- An impromptu craft's buy list as reagent rows for GuideTab.MissingText.
+local function buyRows(it)
+    local out = {}
+    for _, b in ipairs(it.buy or {}) do out[#out + 1] = { itemID = b.itemID, name = b.name, need = b.count, have = 0 } end
+    return out
+end
+
 -- Shows the area for `live` (nil hides it) and stands the step list above it or the card.
 local function fillImpromptu(live)
     local area = ui.impromptu
@@ -640,18 +664,23 @@ local function fillImpromptu(live)
         if it then
             r.name:SetText(it.name)
             r.name:SetTextColor(unpack(diffColor(difficultyAt(it.recipe, skill))))
-            r.info:SetText(CP.Impromptu.Info(it))
+            local room = infoRoom(r, it.name)
+            r.info:SetText(CP.Impromptu.Info(it, false, room and function(text)
+                return S.Measure(text, "small") <= room
+            end))
             r.info:SetWidth(S.Measure(r.info:GetText(), "small") + 2)
             local b = r.craft
-            b.recipeID, b.count = it.spell, it.crafts
+            -- Craft makes what the bags hold the vendor goods for; greyed, it says what to buy.
+            b.recipeID, b.count = it.spell, it.now or it.crafts
             if live.offline then
                 b.openTo, b.tip = spell, why or nil
                 b.label:SetText("Open")
                 setEnabled(b, not why)
             else
-                b.openTo, b.tip = nil, nil
+                local short = b.count <= 0 and CP.GuideTab.MissingText(buyRows(it), 1) or nil
+                b.openTo, b.tip = nil, short
                 b.label:SetText("Craft")
-                setEnabled(b, not busy)
+                setEnabled(b, not busy and short == nil and b.count > 0)
             end
         end
     end
@@ -2523,11 +2552,13 @@ local function initCard(btn, card)
     if card.impLine then
         btn.impLine:SetText(card.impLine)
         local ib = btn.impBtn
-        ib.spell, ib.count, ib.learnTo, ib.enchantRow, ib.usePattern = card.impSpell, card.impCount, nil, nil, nil
+        local now = card.impItem and card.impItem.now or card.impCount
+        ib.spell, ib.count, ib.learnTo, ib.enchantRow, ib.usePattern = card.impSpell, now, nil, nil, nil
         if card.open and CP.Window.OpenID() == card.key then
-            ib.openTo, ib.tip = nil, nil
+            local short = now <= 0 and card.impItem and CP.GuideTab.MissingText(buyRows(card.impItem), 1) or nil
+            ib.openTo, ib.tip = nil, short
             ib.label:SetText("Craft")
-            S.SetEnabled(ib, not CP.Crafting.Busy())
+            S.SetEnabled(ib, not CP.Crafting.Busy() and now > 0)
         else
             local why = CP.Window.OpenBlocked()
             ib.openTo, ib.tip = card.key, why
