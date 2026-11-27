@@ -185,8 +185,8 @@ Settings.LIST = {
     { key = "otherZones", group = "Gathering window", kind = "toggle",
       disabled = function(get) return get("mapIcons") == false end,
       label = "Other zones",
-      desc = "The rest of your continent's routes and grind spots show dimmed, so you can plan ahead, "
-          .. "and your own zone stays on the map while you plan another. Greyed out while Icons on the map is off.",
+      desc = "The rest of your continent's routes and grind spots show dimmed, so you can plan ahead. "
+          .. "Your own zone and a zone you picked always show in full. Greyed out while Icons on the map is off.",
       apply = function() if CP.RouteMap then CP.RouteMap.Refresh() end end },
     { key = "gatherHideInCombat", group = "Gathering window", kind = "toggle",
       label = "Hide in combat",

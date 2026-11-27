@@ -434,20 +434,26 @@ end)
 
 -- 5. The route ------------------------------------------------------------------------
 
--- Route pins added now, by map kind.
+-- Route pins added now, by map kind, and minimap pins by zone in `live.miniAt`.
 local function trackPins()
-    local live = { world = 0, mini = 0 }
+    local live = { world = 0, mini = 0, miniAt = {} }
     for kind, name in pairs({ world = "AddWorldMapIconMap", mini = "AddMinimapIconMap" }) do
         local was = Pins[name]
-        World.set(Pins, name, function(self, ref, ...)
-            if ref == "ProfLost_Route" then live[kind] = live[kind] + 1 end
-            return was(self, ref, ...)
+        World.set(Pins, name, function(self, ref, icon, zone, ...)
+            if ref == "ProfLost_Route" then
+                live[kind] = live[kind] + 1
+                if kind == "mini" then live.miniAt[zone] = (live.miniAt[zone] or 0) + 1 end
+            end
+            return was(self, ref, icon, zone, ...)
         end)
     end
     for kind, name in pairs({ world = "RemoveAllWorldMapIcons", mini = "RemoveAllMinimapIcons" }) do
         local was = Pins[name]
         World.set(Pins, name, function(self, ref, ...)
-            if ref == "ProfLost_Route" then live[kind] = 0 end
+            if ref == "ProfLost_Route" then
+                live[kind] = 0
+                if kind == "mini" then live.miniAt = {} end
+            end
             return was(self, ref, ...)
         end)
     end
@@ -461,15 +467,17 @@ T.test("the picked zone's route draws on the world map, not the minimap, until t
     T.advance(5)
     T.ok(RM.Away(), "drawn as a planned zone")
     T.ok(RM.Drawn()[BARRENS], "the Barrens' route is drawn")
-    T.ok(not RM.Drawn()[DUROTAR], "Durotar's is not")
+    T.ok(RM.Drawn()[DUROTAR], "the player's own Durotar stays drawn")
     T.ok(live.world > 0, "pins on the world map")
-    T.eq(live.mini, 0, "no minimap pins")
+    T.eq(live.miniAt[BARRENS], nil, "no minimap pins for the picked zone")
+    T.ok((live.miniAt[DUROTAR] or 0) > 0, "the player's own zone stays on the minimap")
     T.ok(CP.RouteLines.Has(BARRENS), "a line on the map")
     MapWorld.Move(BARRENS, 0.5, 0.5)
     GL.Refresh()
     T.advance(5)
     T.ok(not RM.Away(), "the player is there")
-    T.ok(live.mini > 0, "the minimap trail shows now")
+    T.ok((live.miniAt[BARRENS] or 0) > 0, "the minimap trail shows now")
+    T.eq(live.miniAt[DUROTAR], nil, "the old zone left the minimap")
 end)
 
 T.test("the folded panel's route follows the pick too", function()

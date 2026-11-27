@@ -342,6 +342,9 @@ end
 
 function RouteLines.Has(zone) return loops[zone] ~= nil end
 
+-- True while `zone`'s loop may show on the minimap.
+function RouteLines.OnMinimap(zone) return loops[zone] ~= nil and not loops[zone].noMini end
+
 -- Line counts on each surface, for tests.
 function RouteLines.Counts()
     return world and world.pool.used or 0, mini and mini.pool.used or 0

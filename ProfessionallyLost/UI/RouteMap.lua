@@ -8,8 +8,9 @@ if CP.stopped then return end
 -- The player's zone shows on the minimap, its zone map and its continent map. With
 -- "Other zones", every other zone on the player's continent is solved after
 -- it, at low priority, and drawn dimmed on its zone map and the continent map. While the
--- player plans a picked zone, that zone takes the player's slot and the player's own zone
--- is one of the others. Farm follows the setting as the guide does. What is drawn never
+-- player plans a picked zone, that zone takes the player's slot without the minimap, and the
+-- player's own zone gets a slot of its own: full strength, on the minimap too, whatever
+-- "Other zones" says. Farm follows the setting as the guide does. What is drawn never
 -- depends on which map the world map (or a map addon) shows.
 
 local S = CP.Style
@@ -298,11 +299,12 @@ end
 -- `here` is the player's zone: minimap, its zone map and the continent. `others[zone]`
 -- holds every other zone on the continent, solved only with "Other zones". A zone the
 -- player picked to plan ahead takes `here` with `away` set: its zone map and the continent
--- only, no minimap trail until the player is there.
+-- only, no minimap trail until the player is there. `home` then holds the player's own zone.
 local here = {}
+local home = {}             -- { zone, key, result }: the player's zone while a picked zone holds `here`
 local others = {}           -- [zone] = { key, result }
 local current = here
-local jobs = {}             -- here, others: the player's zone always runs first
+local jobs = {}             -- here, home, others: run in that order
 local pass = { key = nil }  -- what the last other-zones pass was started for
 
 function RouteMap.Clear()
@@ -402,10 +404,11 @@ local function drawAll()
         return
     end
     if here.result and here.zone then drawSlot(here.zone, here.result, not here.away, false) end
+    if home.result and home.zone ~= here.zone then drawSlot(home.zone, home.result, true, false) end
     local zones = {}
     if RouteMap.OthersOn() then
         for zone, slot in pairs(others) do
-            if slot.result and zone ~= here.zone then zones[#zones + 1] = zone end
+            if slot.result and zone ~= here.zone and zone ~= home.zone then zones[#zones + 1] = zone end
         end
         table.sort(zones)
         for _, zone in ipairs(zones) do
@@ -430,7 +433,7 @@ local function drawable(result)
 end
 
 function RouteMap.HasRoute()
-    if drawable(here.result) then return true end
+    if drawable(here.result) or drawable(home.result) then return true end
     for _, slot in pairs(others) do
         if drawable(slot.result) then return true end
     end
@@ -503,18 +506,18 @@ function RouteMap.Solving()
     return jobs.here ~= nil
 end
 
--- True while the other zones are being solved or their pins are still being drawn. A
--- pass ends too.
+-- True while the player's own zone behind a picked one or the other zones are being solved,
+-- or their pins are still being drawn. A pass ends too.
 function RouteMap.Passing()
-    return jobs.others ~= nil or #queue > 0
+    return jobs.home ~= nil or jobs.others ~= nil or #queue > 0
 end
 
--- One job resumes per frame, the player's zone first.
+-- One job resumes per frame: the listed zone first, then the player's own, then the others.
 runner = CreateFrame("Frame", nil, UIParent)
 runner:Hide()
 runner:SetScript("OnUpdate", function(self)
     if #queue > 0 then drawQueued() end
-    local name = jobs.here and "here" or jobs.others and "others"
+    local name = jobs.here and "here" or jobs.home and "home" or jobs.others and "others"
     if not name then
         if #queue == 0 then self:Hide() end
         return
@@ -530,6 +533,9 @@ runner:SetScript("OnUpdate", function(self)
                 here.result, here.zone = nil, nil
                 draw()
                 if here.done then here.done() end
+            elseif name == "home" then
+                home.result, home.zone = nil, nil
+                draw()
             end
         end
         -- The error goes to the bug report; chat gets a plain sentence.
@@ -538,7 +544,7 @@ runner:SetScript("OnUpdate", function(self)
     elseif coroutine.status(job) == "dead" and jobs[name] == job then
         jobs[name] = nil
     end
-    if not (jobs.here or jobs.others or #queue > 0) then self:Hide() end
+    if not (jobs.here or jobs.home or jobs.others or #queue > 0) then self:Hide() end
 end)
 
 -- The skills the ring colours read, as one string.
@@ -704,6 +710,61 @@ local function passKey(zone, continent)
     return table.concat(parts, "|")
 end
 
+-- Drops the player's own zone's slot and its pins.
+local function dropHome()
+    jobs.home, home.key = nil, nil
+    if home.result then
+        home.zone, home.result = nil, nil
+        draw()
+    end
+    home.zone = nil
+end
+
+-- While the player plans a picked zone, solve their own zone from the rows it has with
+-- nothing picked, so it stays on the map and the minimap at full strength.
+local function solveHome()
+    local zone = CP.Gather.PlayerZone()
+    local wanted = here.away and here.asked and zone and zone ~= here.asked and CP.db.route ~= false
+        and CP.db.mapIcons ~= false and CP.Gather.ZoneSize(zone)
+    if not wanted then return dropHome() end
+    local key = passKey(zone, "home")
+    if key == home.key then return end
+    if home.zone ~= zone and home.result then
+        home.result = nil
+        draw()
+    end
+    home.key, home.zone = key, zone
+    local from
+    local pos = C_Map.GetPlayerMapPosition(zone, "player")
+    local px, py
+    if pos then px, py = pos:GetXY() end
+    if px and py then from = { x = px, y = py } end
+    local job
+    job = coroutine.create(function()
+        local start, lights = debugprofilestop(), 0
+        local function tick()
+            if debugprofilestop() - start > FRAME_MS then
+                coroutine.yield()
+                start = debugprofilestop()
+            end
+        end
+        local function light()
+            lights = lights + 1
+            if lights % LIGHT_EVERY == 0 then tick() end
+        end
+        CP.Gather.JobTick(light)
+        local rows = CP.GatherList.HereRows(zone)
+        tick()
+        local result = #rows > 0 and solveZone(zone, rows, from, tick, light) or nil
+        if jobs.home ~= job then return end
+        jobs.home = nil
+        home.result, home.rows = result, #rows
+        draw()
+    end)
+    jobs.home = job
+    runner:Show()
+end
+
 -- The last finished pass: zones looked at, zones solved, frames it took, milliseconds of
 -- work in all, the longest single frame's work, and seconds from start to finish.
 RouteMap.lastPass = { zones = 0, solved = 0, frames = 0, ms = 0, longest = 0, seconds = 0 }
@@ -753,10 +814,9 @@ local function solveOthers()
         CP.Gather.JobTick(light)
         local keep = {}
 
-        -- The listed zone has its own slot. The player's zone does too, unless a picked zone holds it.
-        local away = here.asked and here.asked ~= zone
+        -- The listed zone and the player's own zone each have a slot of their own.
         for _, z in ipairs(zones) do
-            if z ~= here.asked and (away or z ~= zone) and CP.Gather.ZoneSize(z) then
+            if z ~= here.asked and z ~= zone and CP.Gather.ZoneSize(z) then
                 stats.zones = stats.zones + 1
                 local rows = GL.RouteRows(z, nil, true, GL.OTHER_OPTS)
                 tick()
@@ -788,7 +848,13 @@ end
 -- plan ahead and is not in, drawn on the world map only.
 function RouteMap.Update(zone, rows, done, away)
     solveHere(zone, rows, done, away)
+    solveHome()
     solveOthers()
+end
+
+-- The player's own zone while a picked zone holds the listed slot, or nil.
+function RouteMap.Home()
+    return home.result and home.zone or nil
 end
 
 -- True while the drawn loop is for a picked zone the player is not in.
@@ -802,22 +868,26 @@ function RouteMap.Refresh()
     solveOthers()
 end
 
--- "Icons on the map" was switched: redraw or clear every pin and line, then the other zones.
+-- "Icons on the map" was switched: redraw or clear every pin and line, then the player's
+-- zone behind a picked one and the other zones.
 function RouteMap.IconsChanged()
     draw()
+    solveHome()
     if RouteMap.OthersOn() then solveOthers() else dropOthers() end
 end
 
 -- The route filter changed: solve the other zones again.
 function RouteMap.Revisit()
-    pass.key = nil
+    pass.key, home.key = nil, nil
+    solveHome()
     solveOthers()
 end
 
 -- Drops every solve, running or done, and the pins they drew, as a fresh login starts.
 -- The test worlds call it between scenes.
 function RouteMap.Forget()
-    jobs.here, jobs.others, pass.key = nil, nil, nil
+    jobs.here, jobs.home, jobs.others, pass.key = nil, nil, nil, nil
+    home.zone, home.key, home.result = nil, nil, nil
     here.key, here.result, here.zone, here.rows, here.solved, here.done = nil, nil, nil, 0, nil, nil
     here.handed, here.inputs, here.colours, here.away, here.asked = nil, nil, nil, nil, nil
     wipe(others)
@@ -859,13 +929,14 @@ function RouteMap.ZonesReport()
         return why and (text .. "; no skinning spot: " .. why) or text
     end
     local lines = {}
-    local running = jobs.here and "your zone solving" or jobs.others and "pass running" or "pass done"
+    local running = (jobs.here or jobs.home) and "your zone solving" or jobs.others and "pass running" or "pass done"
     local on = CP.db and RouteMap.OthersOn() and "on" or "off"
     lines[1] = ("other zones %s; %s"):format(on, running)
     local p = RouteMap.lastPass
     lines[2] = ("last pass: %d zones looked at, %d solved, %.1f s over %d frames, %.0f ms work, longest frame %.1f ms")
         :format(p.zones, p.solved, p.seconds, p.frames, p.ms, p.longest)
-    if here.solved then lines[#lines + 1] = line(here.solved, here.rows, here.result, ", yours") end
+    if here.solved then lines[#lines + 1] = line(here.solved, here.rows, here.result, here.away and ", picked" or ", yours") end
+    if home.result then lines[#lines + 1] = line(home.zone, home.rows, home.result, ", yours") end
     local zones = {}
     for zone in pairs(others) do zones[#zones + 1] = zone end
     table.sort(zones)
@@ -915,9 +986,10 @@ function RouteMap.PinsReport()
     end
     local list = {}
     if here.zone and here.result then list[1] = { here.zone, here.result } end
+    if home.result and home.zone ~= here.zone then list[#list + 1] = { home.zone, home.result } end
     local zones = {}
     for zone, slot in pairs(others) do
-        if slot.result and zone ~= here.zone then zones[#zones + 1] = zone end
+        if slot.result and zone ~= here.zone and zone ~= home.zone then zones[#zones + 1] = zone end
     end
     table.sort(zones)
     for _, zone in ipairs(zones) do list[#list + 1] = { zone, others[zone].result } end

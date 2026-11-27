@@ -3014,6 +3014,16 @@ function GatherList.RouteRows(zone, items, wide, opts)
     return out
 end
 
+-- The player's own zone's route rows while they plan a picked zone: the checklist's rows
+-- with its ticks, as the list builds them with nothing picked. Uncached, so the picked
+-- zone keeps Gather.ForZone's one cached list.
+function GatherList.HereRows(zone)
+    local skills = Gather.Skills()
+    local needs, soon = Gather.Needs()
+    local items = next(skills) and Gather.Rows(zone, skills, needs, have, nameOf, GatherList.OTHER_OPTS, soon) or {}
+    return GatherList.RouteRows(zone, GatherList.Ticked(items), true, GatherList.OTHER_OPTS)
+end
+
 -- Why `zone` gets no skinning grind spot (Gather.SkinReason), from the same checklist
 -- rows RouteRows builds for another zone. Nil when it gets one.
 function GatherList.SkinReason(zone)
