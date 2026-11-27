@@ -14,9 +14,10 @@ local BEFORE = {
     textScale = 1, windowOpacity = 0.85, font = "general",
     -- Added after the tidy, on by default.
     whatsNew = true, newerNotice = true,
-    -- The Glowey's Recipes hand-offs (2026-11-26), off by default.
-    gloweyGuide = false, gloweyBuy = false, gloweyTips = false,
 }
+
+-- Glowey's Recipes' own labels, used as they stand on its page (owner, 2026-11-27).
+local THEIR_LABELS = { ["Guide line in item tooltips"] = true }
 
 -- The designed page: group, then each row's key (or label for a keyless row, "note" for the note).
 local ORDER = {
@@ -27,7 +28,8 @@ local ORDER = {
                            "mapIcons", "otherZones", "gatherHideInCombat" } },
     { "Tooltips and bags", { "itemTooltip", "unitTooltip", "neededMarks" } },
     { "Prices", { "Price Addon", "note" } },
-    { "Glowey's Recipes", { "gloweyGuide", "gloweyBuy", "gloweyTips", "Open Glowey's Recipes",
+    { "Glowey's Recipes", { "Leveling guide", "Buy lists", "Trainer panel", "Guide line in item tooltips",
+                            "Scanned prices", "Light up its step", "Open Glowey's Recipes",
                             "Glowey's Recipes settings", "Put everything back" } },
     { "Help", { "Report a bug", "whatsNew", "What's New", "newerNotice", "Take the tour" } },
 }
@@ -65,13 +67,15 @@ end)
 
 T.test("every label on the page is four words or fewer", function()
     for _, s in ipairs(S.LIST) do
-        if s.label then T.ok(words(s.label) <= 4, ("%q has %d words"):format(s.label, words(s.label))) end
+        if s.label and not THEIR_LABELS[s.label] then
+            T.ok(words(s.label) <= 4, ("%q has %d words"):format(s.label, words(s.label)))
+        end
     end
     for _, g in ipairs(CP.Plugin.Pages(API)[1].groups) do
         T.ok(words(g.label) <= 4, ("group %q has %d words"):format(g.label, words(g.label)))
         for _, item in ipairs(g.items) do
             for _, text in ipairs({ item.text, type(item.label) == "string" and item.label or nil }) do
-                T.ok(words(text) <= 4, ("%q has %d words"):format(text, words(text)))
+                if not THEIR_LABELS[text] then T.ok(words(text) <= 4, ("%q has %d words"):format(text, words(text))) end
             end
         end
     end

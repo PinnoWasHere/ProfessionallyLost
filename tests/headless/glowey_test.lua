@@ -1,8 +1,9 @@
--- Glowey's Recipes hand-offs (owner, 2026-11-26). A "Glowey's Recipes" group on ProfLost's
--- options page, shown only while Glowey's Recipes is loaded, has a switch for each job both
--- addons do: the leveling guide, the vendor Buy button and the item tooltip lines. On leaves
--- the job to Glowey's Recipes. Where its own switch already leaves that job to ProfLost, ours
--- greys and ProfLost keeps the job, so neither addon leaves it to the other.
+-- Glowey's Recipes hand-offs (owner, 2026-11-27). Glowey's Recipes' options page has six
+-- switches, one per job both addons can do: on, Professionally Lost does it. ProfLost's
+-- "Glowey's Recipes" group shows the same six rows with the same labels, and each row reads and
+-- writes Glowey's Recipes' own saved switch, so a change on either page shows on the other.
+-- ProfLost follows the switches for the three jobs it has (leveling guide, vendor Buy button,
+-- item tooltip lines) once the player has answered Glowey's Recipes' first-load question.
 
 local CP = ProfLost
 local W, P, B, G = CP.Window, CP.Panel, CP.Buying, CP.Glowey
@@ -10,6 +11,24 @@ local LW = 165
 local DUROTAR = 1411
 local FINE_THREAD = 2321
 local GROUP = "Glowey's Recipes"
+local SCOPE = "DaylightRecipes"
+
+-- Its six rows, in its order, with its labels (DaylightRecipes Core.lua's Professionally Lost group).
+local ROWS = {
+    { "guide", "plGuide", "Leveling guide" },
+    { "buy", "plShop", "Buy lists" },
+    { "trainer", "plTrainer", "Trainer panel" },
+    { "tooltip", "plTips", "Guide line in item tooltips" },
+    { "prices", "plPrices", "Scanned prices" },
+    { "step", "plStep", "Light up its step" },
+}
+
+-- The owner's state: the question answered, every job with ProfLost.
+local function ownerState()
+    local t = {}
+    for _, r in ipairs(ROWS) do t[r[2]] = true end
+    return t
+end
 
 local function scene(glowey, skill)
     MapWorld.begin({ zone = DUROTAR, level = 20, side = "Horde" })
@@ -44,12 +63,20 @@ local function get(k) return CP.Settings.Current(k) end
 
 local function hidden(item) return item.hidden ~= nil and item.hidden(get) == true end
 
+local function greyed(item) return item.disabled ~= nil and item.disabled(get) == true end
+
+local function theirs(key) return DaylightWorld.state.settings[SCOPE] and DaylightWorld.state.settings[SCOPE][key] end
+
 local function shown() return P.frame:IsShown() == true end
 
--- The panel the options page lives on: Show records the page asked for.
+-- The panel the options page lives on: Show records the page Daylight UI would show, "home" for
+-- a page Glowey's folded hub hides (Options/Panel.lua Show).
 local function optionsPanel()
     local panel = { pages = {} }
-    function panel.Show(id) panel.pages[#panel.pages + 1] = id end
+    function panel.Show(id)
+        if GloweyWorld.state and GloweyWorld.Hidden(id) then id = "home" end
+        panel.pages[#panel.pages + 1] = id
+    end
     World.set(DaylightWorld.state.addon, "OptionsPanel", panel)
     return panel
 end
@@ -70,39 +97,120 @@ T.test("the group's rows show only while Glowey's Recipes is loaded", function()
     end
 end)
 
-T.test("three switches, off by default, each saying it leaves the job to Glowey's Recipes", function()
+T.test("six switches with Glowey's Recipes' labels, in its order, then the three buttons", function()
+    scene({})
+    optionsPanel()
+    local items = group().items
+    for i, r in ipairs(ROWS) do
+        local item = items[i]
+        T.eq(item.type, "toggle", r[3] .. " is a switch")
+        T.eq(item.label, r[3], "row " .. i .. " has its label")
+        T.eq(item.key, nil, r[3] .. " keeps no value of ProfLost's own")
+        T.ok(item.desc:find("Professionally Lost", 1, true) ~= nil, r[3] .. " says what on means")
+    end
+    T.eq(items[7].label, "Open Glowey's Recipes")
+    T.eq(items[8].label, "Glowey's Recipes settings")
+    T.eq(items[9].label, "Put everything back")
+    T.eq(#items, 9)
     for _, key in ipairs({ "gloweyGuide", "gloweyBuy", "gloweyTips" }) do
-        local s = CP.Settings.Find(key)
-        T.ok(s ~= nil, key .. " is a setting")
-        T.eq(s.group, GROUP)
-        T.eq(CP.DEFAULTS[key], false, key .. " starts off: ProfLost does the job")
-        T.ok(s.desc:find("Glowey's Recipes", 1, true) ~= nil, key .. " names Glowey's Recipes")
+        T.eq(CP.Settings.Find(key), nil, key .. ": no second switch of ProfLost's own")
     end
 end)
 
--- 2. The leveling guide ----------------------------------------------------------------------
+-- 2. One state, on both pages ----------------------------------------------------------------
 
-T.test("the guide hand-off keeps the guide window shut until it is opened by hand", function()
+T.test("each row reads Glowey's Recipes' switch, and a change on its page shows on ours", function()
+    scene({ asked = true })
+    for _, r in ipairs(ROWS) do T.eq(row(r[3]).get(), false, r[3] .. " starts off, as its default") end
+    for _, r in ipairs(ROWS) do
+        GloweyWorld.Set(r[2], true)
+        T.eq(row(r[3]).get(), true, r[3] .. " follows its page")
+    end
+    GloweyWorld.Set("plTips", false)
+    T.eq(row("Guide line in item tooltips").get(), false, "and back")
+end)
+
+T.test("a change on our page writes Glowey's Recipes' own switch, through Daylight UI", function()
+    scene({ asked = true })
+    local heard = {}
+    local h = CP.Settings.Daylight().API.On("SettingChanged", function(scope, path, value)
+        if scope == SCOPE then heard[path] = value end
+    end)
+    World.onEnd(function() CP.Settings.Daylight().API.Off(h) end)
+    for _, r in ipairs(ROWS) do
+        local item = row(r[3])
+        T.ok(item.set(true) ~= false, r[3] .. " takes the value")
+        T.eq(theirs(r[2]), true, r[3] .. " writes " .. r[2])
+        T.eq(heard[r[2]], true, r[3] .. ": Glowey's Recipes hears it")
+        T.eq(item.get(), true)
+    end
+    row("Leveling guide").set(false)
+    T.eq(theirs("plGuide"), false)
+    T.eq(row("Leveling guide").default(), false, "its default, off")
+end)
+
+T.test("in the owner's state no row is greyed", function()
+    scene({ asked = true, settings = ownerState() })
+    for _, r in ipairs(ROWS) do
+        T.ok(not greyed(row(r[3])), r[3] .. " is live")
+        T.eq(row(r[3]).get(), true, r[3] .. " reads on")
+    end
+    for _, job in ipairs({ "guide", "buy", "tooltip" }) do T.ok(not G.Handed(job), job .. " stays with ProfLost") end
+end)
+
+T.test("only the rows that follow the guide grey, and only while the guide is Glowey's Recipes'", function()
+    scene({ asked = true, settings = { plShop = true, plTrainer = true, plStep = true } })
+    for _, label in ipairs({ "Buy lists", "Trainer panel", "Light up its step" }) do
+        T.ok(greyed(row(label)), label .. " greys while Leveling guide is off")
+        T.eq(row(label).get(), true, label .. " still shows its saved switch, as Glowey's Recipes' page does")
+    end
+    for _, label in ipairs({ "Leveling guide", "Guide line in item tooltips", "Scanned prices" }) do
+        T.ok(not greyed(row(label)), label .. " never greys")
+    end
+    row("Leveling guide").set(true)
+    for _, r in ipairs(ROWS) do T.ok(not greyed(row(r[3])), r[3] .. " live with the guide on") end
+end)
+
+T.test("until its first-load question is answered, ProfLost keeps every job", function()
     scene({})
-    T.ok(shown(), "the guide window shows before the hand-off")
-    CP.Settings.Save("gloweyGuide", true)
+    for _, job in ipairs({ "guide", "buy", "tooltip" }) do T.ok(not G.Handed(job), job .. " with ProfLost") end
+    T.ok(shown(), "the guide window shows")
+    GloweyWorld.Set("plTips", true)
+    T.ok(G.Handed("guide"), "a switch turned on is an answer: the guide, still off, is Glowey's Recipes'")
+    T.ok(not G.Handed("tooltip"))
+end)
+
+T.test("old ProfLost-side switches are dropped from the saved file", function()
+    local db = CP.CarryOver({ gloweyGuide = true, gloweyBuy = false, gloweyTips = true, collect = true })
+    T.eq(db.gloweyGuide, nil)
+    T.eq(db.gloweyBuy, nil)
+    T.eq(db.gloweyTips, nil)
+    T.eq(db.collect, true, "other keys stay")
+end)
+
+-- 3. The leveling guide ----------------------------------------------------------------------
+
+T.test("Leveling guide off keeps the guide window shut until it is opened by hand", function()
+    scene({ asked = true, settings = ownerState() })
+    T.ok(shown(), "the guide window shows while ProfLost does the guide")
+    row("Leveling guide").set(false)
     T.ok(G.Handed("guide"))
-    T.ok(not shown(), "shut once the guide is left to Glowey's Recipes")
+    T.ok(not shown(), "shut once the guide is Glowey's Recipes'")
     T.ok(not CP.db.windowClosed, "the player's own closed choice is untouched")
     W.Toggle()
     T.ok(shown(), "the minimap button still opens it")
-    CP.Settings.Save("gloweyGuide", false)
-    T.ok(shown(), "still open with the hand-off off")
+    row("Leveling guide").set(true)
+    T.ok(shown(), "still open with the guide back")
     W.Close()
     W.Open()
-    CP.Settings.Save("gloweyGuide", true)
-    T.ok(not shown(), "switching the hand-off on shuts a window opened earlier")
-    CP.Settings.Save("gloweyGuide", false)
-    T.ok(shown(), "back as before once the hand-off is off")
+    GloweyWorld.Set("plGuide", false)
+    T.ok(not shown(), "its own page switching the guide over shuts a window opened earlier")
+    GloweyWorld.Set("plGuide", true)
+    T.ok(shown(), "and takes it back at once")
 end)
 
-T.test("the guide hand-off takes ProfLost's step marks off the profession window's recipe lines", function()
-    scene({}, { rank = 100, max = 150 })
+T.test("Leveling guide off takes ProfLost's step marks off the profession window's recipe lines", function()
+    scene({ asked = true, settings = ownerState() }, { rank = 100, max = 150 })
     CraftWorld.Open(LW)
     T.advance(0.3)
     local API = CP.Settings.Daylight().API
@@ -111,13 +219,13 @@ T.test("the guide hand-off takes ProfLost's step marks off the profession window
         local bar = API.Attach(line).cpBar
         if CP.CraftRows.Marks()[id] and bar and bar:IsShown() then marked = marked + 1 end
     end
-    T.ok(marked > 0, "the guide's steps are marked before the hand-off")
-    CP.Settings.Save("gloweyGuide", true)
+    T.ok(marked > 0, "the guide's steps are marked while ProfLost does the guide")
+    row("Leveling guide").set(false)
     for _, line in pairs(DaylightWorld.state.rows) do
         local bar = API.Attach(line).cpBar
-        T.ok(not (bar and bar:IsShown()), "no mark while the guide is left to Glowey's Recipes")
+        T.ok(not (bar and bar:IsShown()), "no mark while the guide is Glowey's Recipes'")
     end
-    CP.Settings.Save("gloweyGuide", false)
+    row("Leveling guide").set(true)
     local back = 0
     for id, line in pairs(DaylightWorld.state.rows) do
         local bar = API.Attach(line).cpBar
@@ -126,23 +234,7 @@ T.test("the guide hand-off takes ProfLost's step marks off the profession window
     T.eq(back, marked, "the marks come back")
 end)
 
-T.test("Glowey's Recipes leaving its guide to ProfLost greys ours, and ProfLost keeps the guide", function()
-    scene({ settings = { plGuide = true } })
-    CP.Settings.Save("gloweyGuide", true)
-    local r = row("gloweyGuide")
-    T.eq(r.disabled(get), true, "greyed")
-    T.eq(r.get(), false, "a greyed switch reads off")
-    T.ok(not G.Handed("guide"), "not left to Glowey's Recipes")
-    T.ok(shown(), "the guide window stays")
-    GloweyWorld.Set("plGuide", false)
-    T.eq(r.disabled(get), false, "live again once its switch is off")
-    T.eq(r.get(), true, "the saved choice comes back")
-    T.ok(not shown(), "and ProfLost leaves the guide to it at once")
-    GloweyWorld.Set("plGuide", true)
-    T.ok(shown(), "and takes it back at once")
-end)
-
--- 3. The vendor Buy button -------------------------------------------------------------------
+-- 4. The vendor Buy button -------------------------------------------------------------------
 
 local function merchant(slots)
     World.patch("GetMerchantNumItems", function() return #slots end)
@@ -178,67 +270,63 @@ end
 
 local function buyShown() return B.Button() ~= nil and B.Button():IsShown() == true end
 
-T.test("the buy hand-off takes the Buy for guide button off the vendor window", function()
-    atVendor({})
-    T.ok(buyShown(), "the button shows before the hand-off")
-    CP.Settings.Save("gloweyBuy", true)
+T.test("Buy lists off takes the Buy for guide button off the vendor window", function()
+    atVendor({ asked = true, settings = ownerState() })
+    T.ok(buyShown(), "the button shows while ProfLost does the buying")
+    row("Buy lists").set(false)
     T.ok(not buyShown(), "gone at once")
     T.advance(1)
     T.ok(not buyShown(), "and stays gone while the vendor is open")
-    CP.Settings.Save("gloweyBuy", false)
-    T.ok(buyShown(), "back once the hand-off is off")
+    row("Buy lists").set(true)
+    T.ok(buyShown(), "back once Buy lists is on")
+    GloweyWorld.Set("plGuide", false)
+    T.ok(not buyShown(), "Buy lists counts only while ProfLost does the guide")
 end)
 
-T.test("Glowey's Recipes leaving its buy lists to ProfLost greys ours; its buy switch alone does not", function()
-    atVendor({ settings = { plShop = true } })
-    CP.Settings.Save("gloweyBuy", true)
-    local r = row("gloweyBuy")
-    T.eq(r.disabled(get), false, "its buy switch means nothing without its guide switch")
-    T.ok(not buyShown())
-    GloweyWorld.Set("plGuide", true)
-    T.eq(r.disabled(get), true, "greyed once both are on")
-    T.ok(buyShown(), "ProfLost's button is back at once")
-end)
-
--- 4. Item tooltips ---------------------------------------------------------------------------
+-- 5. Item tooltips ---------------------------------------------------------------------------
 
 local function tooltipAdds()
     local tip = { AddLine = function() end, AddDoubleLine = function() end, Show = function() end }
     return CP.ItemTooltip.Add(tip, 2319)
 end
 
-T.test("the tooltip hand-off drops ProfLost's item tooltip lines unless Glowey's Recipes leaves them to it", function()
-    scene({})
+T.test("Guide line in item tooltips off drops ProfLost's lines, unless Glowey's Recipes shows no tooltips", function()
+    scene({ asked = true, settings = ownerState() })
     World.set(CP.charDB, "gatherNeeds", { [LW] = { [2319] = 10 } })
     World.set(CP.db, "itemTooltip", true)
-    T.ok(tooltipAdds(), "lines before the hand-off")
-    CP.Settings.Save("gloweyTips", true)
-    T.ok(not tooltipAdds(), "none once left to Glowey's Recipes")
-    GloweyWorld.Set("plTips", true)
-    T.ok(row("gloweyTips").disabled(get), "greyed while its switch leaves the lines to ProfLost")
-    T.ok(tooltipAdds(), "ProfLost keeps them")
-    GloweyWorld.Set("plTips", false)
+    T.ok(tooltipAdds(), "lines while ProfLost does them")
+    row("Guide line in item tooltips").set(false)
+    T.ok(not tooltipAdds(), "none once they are Glowey's Recipes'")
     GloweyWorld.Set("tooltips", false)
-    T.ok(row("gloweyTips").disabled(get), "greyed while its own tooltip lines are off")
-    T.ok(tooltipAdds(), "so someone still says what the guides need")
+    T.ok(not greyed(row("Guide line in item tooltips")), "not greyed")
+    T.ok(tooltipAdds(), "with its item tooltips off, ProfLost still says what the guides need")
 end)
 
--- 5. Buttons, and Glowey's Recipes gone ------------------------------------------------------
+-- 6. Buttons, and Glowey's Recipes gone ------------------------------------------------------
 
-T.test("Open runs Glowey's Recipes' /recipes, Settings shows its page, Put everything back turns all three off", function()
+T.test("the settings button opens Glowey's Recipes' own page while Glowey's hub folds it", function()
+    scene({ hub = true })
+    local panel = optionsPanel()
+    row("Glowey's Recipes settings").func()
+    T.eq(panel.pages, { "DaylightRecipes.recipes" }, "its page, not Daylight UI's home")
+end)
+
+T.test("the settings button opens the same page without the hub", function()
     scene({})
     local panel = optionsPanel()
-    for _, key in ipairs({ "gloweyGuide", "gloweyBuy", "gloweyTips" }) do CP.Settings.Save(key, true) end
-    row("Open Glowey's Recipes").func()
-    T.eq(GloweyWorld.state.opened, 1, "its window toggled once")
     row("Glowey's Recipes settings").func()
     T.eq(panel.pages, { "DaylightRecipes.recipes" })
+end)
+
+T.test("Open runs Glowey's Recipes' /recipes; Put everything back gives all six to ProfLost", function()
+    scene({ asked = true })
+    row("Open Glowey's Recipes").func()
+    T.eq(GloweyWorld.state.opened, 1, "its window toggled once")
+    T.ok(not shown(), "the guide is Glowey's Recipes' before")
     local back = row("Put everything back")
     T.eq(back.confirm, true, "asks Click again first")
     back.func()
-    for _, key in ipairs({ "gloweyGuide", "gloweyBuy", "gloweyTips" }) do
-        T.eq(CP.Settings.Current(key), false, key .. " is off")
-    end
+    for _, r in ipairs(ROWS) do T.eq(theirs(r[2]), true, r[2] .. " is on") end
     T.ok(shown(), "the guide window is back")
 end)
 
@@ -249,9 +337,9 @@ T.test("the Open buttons hide when there is nothing to open", function()
     T.ok(not hidden(row("Put everything back")))
 end)
 
-T.test("switches left on with Glowey's Recipes gone: ProfLost does every job", function()
+T.test("with Glowey's Recipes gone, ProfLost does every job", function()
     scene(nil)
-    for _, key in ipairs({ "gloweyGuide", "gloweyBuy", "gloweyTips" }) do CP.Settings.Save(key, true) end
+    World.set(_G, "DaylightRecipesDB", { proflost = { asked = true } })
     for _, job in ipairs({ "guide", "buy", "tooltip" }) do T.ok(not G.Handed(job), job .. " stays with ProfLost") end
     T.ok(shown(), "the guide window shows")
 end)
