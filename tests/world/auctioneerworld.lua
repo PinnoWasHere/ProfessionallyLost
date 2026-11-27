@@ -2,14 +2,14 @@
 -- Interface only; none of its code.
 --
 -- Read from Auctioneer 4.0.11 as installed (Auc-Advanced/, its Auc-Stat-* modules):
---   * [code] AucAdvanced.API.GetMarketValue(itemLink, serverKey, confidence) -> copper, seen,
+--   * [docs] AucAdvanced.API.GetMarketValue(itemLink, serverKey, confidence) -> copper, seen,
 --     modules, or nil (CoreAPI.lua:125-151). It can raise an error (:222, :242).
---   * [code] "item:<id>" is read as item <id> (CoreAPI.lua:929-955, GetStoreKeyFromLinkB :1163-1167);
+--   * [docs] "item:<id>" is read as item <id> (CoreAPI.lua:929-955, GetStoreKeyFromLinkB :1163-1167);
 --     a number goes through GetItemInfo first and is nil until the item is cached (:127-128).
---   * [code] A nil serverKey is the player's own auction house, set only once Auctioneer is active
+--   * [docs] A nil serverKey is the player's own auction house, set only once Auctioneer is active
 --     after the first PLAYER_ENTERING_WORLD (CoreServers.lua:188, 299-302; CoreMain.lua:719); until
 --     then the answer is nil.
---   * [code] AucAdvanced.SendProcessorMessage(msg, ...) tells its modules: "gameactive" once it is
+--   * [docs] AucAdvanced.SendProcessorMessage(msg, ...) tells its modules: "gameactive" once it is
 --     active (CoreMain.lua:722), "scanstats" once a scan's prices are stored (CoreScan.lua:2097),
 --     which can be after the auction house closed. Its callers look it up on AucAdvanced each time.
 -- Guesses:
@@ -41,6 +41,7 @@ function AuctioneerWorld.begin(spec)
         return copper, 3, 2
     end
 
+    -- [docs] AucAdvanced with its API table and SendProcessorMessage, as Auctioneer 4.0.11 has them.
     local auc = { API = API }
     function auc.SendProcessorMessage(msg) S.messages[#S.messages + 1] = msg end
     World.set(_G, "AucAdvanced", auc)

@@ -2,17 +2,17 @@
 -- only; none of its code.
 --
 -- Read from TSM v4.15.9 as installed (TradeSkillMaster/):
---   * [code] TSM_API is a global table made as App/API.lua loads (:30), before its data exists.
---   * [code] TSM_API.GetCustomPriceValue(priceString, itemString) -> copper, or nil and an error
+--   * [docs] TSM_API is a global table made as App/API.lua loads (:30), before its data exists.
+--   * [docs] TSM_API.GetCustomPriceValue(priceString, itemString) -> copper, or nil and an error
 --     text (App/API.lua:279-284, LibTSMApp Price/CustomPrice.lua:128-135). A dot call; a colon call
 --     raises an error (App/API.lua:554-558).
---   * [code] itemString must match "^[ip]:%d+", else it raises an error (App/API.lua:535-544); a
+--   * [docs] itemString must match "^[ip]:%d+", else it raises an error (App/API.lua:535-544); a
 --     plain item is "i:<id>".
---   * [code] "DBMarket" and "DBMinBuyout" are AuctionDB sources (LibTSMApp Config/AuctionDBConfig.lua:38-39),
+--   * [docs] "DBMarket" and "DBMinBuyout" are AuctionDB sources (LibTSMApp Config/AuctionDBConfig.lua:38-39),
 --     in copper. Their data comes only from the TSM desktop app, loaded once in TSM's PLAYER_LOGIN
 --     handler (LibTSMService AuctionDB/AuctionDB.lua:41-43, 135-159; LibTSMWoW Service/Lifecycle.lua:65).
 --     Until then, and for an item it has no data for, the answer is nil.
---   * [code] It keeps no age per item, has no call that starts a scan, and says nothing when its
+--   * [docs] It keeps no age per item, has no call that starts a scan, and says nothing when its
 --     data loads (App/API.lua has no price callback).
 -- Guesses:
 --   * [guess] Prices are what the test sets; the app's data and realms are not modelled.
@@ -49,6 +49,7 @@ function TSMWorld.begin(spec)
         return copper
     end
 
+    -- [docs] TSM_API as TSM v4.15.9's App/API.lua makes it.
     World.set(_G, "TSM_API", API)
 end
 
