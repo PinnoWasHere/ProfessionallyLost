@@ -76,7 +76,9 @@ T.test("while Fishing levels, Cooking takes fish recipes where they level faster
         T.ok(CP.Pricing.IsFish(6303), "Raw Slitherskin Mackerel is a catch")
         T.ok(not CP.Pricing.IsFish(2318), "Light Leather isn't")
         local unpaired, paired, maxed = cookPlan(60, false), cookPlan(60, true), cookPlan(300, true)
-        T.ok(paired > maxed + 80, ("fish recipes cover %d points while Fishing levels, %d at 300"):format(paired, maxed))
+        -- Fishing 60 counts only the fish its waters land (Sourcing.Reach, owner 2026-11-27), so the
+        -- later fish recipes wait until Fishing reaches their water.
+        T.ok(paired > 80, ("fish recipes cover %d points while Fishing levels, %d at 300"):format(paired, maxed))
         T.ok(maxed > 0, "Fishing at 300: fish recipes at their usual effort")
         T.eq(cookPlan(0, true), 0, "no Fishing: no fish to collect")
         T.eq(unpaired, 0, "Fish for Cooking off: as without Fishing")

@@ -63,7 +63,9 @@ Plan.SkillsFor = skillsFor
 -- `withFish` lets fish recipes through for the "or" rows. `skills` (default: skillsFor)
 -- are the professions whose materials count as gettable.
 local function allowFor(guide, learned, dead, withFish, skills)
-    local allow = CP.Sourcing.Filter(guide, learned, CP.db.collect, CP.db.collect and (skills or skillsFor(guide)) or nil)
+    local collect = CP.db.collect
+    local allow = CP.Sourcing.Filter(guide, learned, collect, collect and (skills or skillsFor(guide)) or nil,
+        collect and CP.Sourcing.PlayerReach() or nil)
     local noFish = not withFish and fishAside(guide) and fishTest(guide)
     return function(id, r)
         if dead and dead[id] then return false end
@@ -177,6 +179,7 @@ local function plainWorld(guide, learned, dead, allow, credit, price, shapedByDE
     if not differs then return nil end
     local plainAllow = real and allowFor(guide, learned, dead, false, solo) or allow
     local plainPrice = real and soloPrice(solo) or price
+    local reach = real and CP.Sourcing.PlayerReach()
     local key = CP.Shared.KeyOf(guide)
     local shaped = {}
     for _, line in ipairs(credit and shapedByDE or {}) do
@@ -210,7 +213,7 @@ local function plainWorld(guide, learned, dead, allow, credit, price, shapedByDE
                 local item = pair[1]
                 local info = guide.items and guide.items[item]
                 if admitted then
-                    for _, line in ipairs(CP.Sourcing.GotThrough(guide, item, real, solo)) do
+                    for _, line in ipairs(CP.Sourcing.GotThrough(guide, item, real, solo, reach)) do
                         add(line, item, line == CP.Gather.FISHING and "fish"
                             or CP.Sourcing.IsGathering(line) and "gathers" or "makes")
                     end
@@ -397,7 +400,7 @@ end
 -- drops it and every shut plan (skill, recipes, settings, prices).
 local cached, epoch = nil, 0
 local lastKey, nextKey = {}, {}
-local KEY_SIZE = 15
+local KEY_SIZE = 16
 
 -- Bumped with `epoch` by everything but a skill change. Every shut plan keys on it and on the
 -- skills a solve reads (enchantingKey) instead of `epoch`, so another profession's skill-up costs no
@@ -466,6 +469,57 @@ local function standingKey(guide)
     return table.concat(parts, ",")
 end
 
+-- Each guide's materials a gathering profession or Fishing gets (Sourcing.GatherSkill), with
+-- the lines that get them: { { item, line, line2 }, ... }, built once per guide.
+local gatheredOf = setmetatable({}, { __mode = "k" })
+local function gathered(guide)
+    local list = gatheredOf[guide]
+    if list then return list end
+    list = {}
+    local seen = {}
+    for _, r in pairs(guide.recipes) do
+        for _, pair in ipairs(r.reagents or {}) do
+            local item = pair[1]
+            if not seen[item] then
+                seen[item] = true
+                local line, also = CP.Sourcing.GatherSkill(guide, item)
+                if line then list[#list + 1] = { item, line, also } end
+            end
+        end
+    end
+    table.sort(list, function(a, b) return a[1] < b[1] end)
+    gatheredOf[guide] = list
+    return list
+end
+
+-- What the gathering reach (Sourcing.Reach) lets into guide `guide`'s solve under "Gather it
+-- yourself": the guide's gathered materials the player's ranks and level reach now, as a string.
+-- It moves only when a rank or the level crosses a source's need, so most gathering skill-ups
+-- solve nothing.
+local reachSigs = setmetatable({}, { __mode = "k" })
+function Plan.ReachKey(guide)
+    if not (guide and CP.db.collect) then return "" end
+    local ranks, level = CP.Gather.Skills(), CP.Gather.PlayerLevel()
+    local parts = {}
+    for i, line in ipairs(CP.Gather.PROFS) do parts[i] = ranks[line] or 0 end
+    local raw = table.concat(parts, ",") .. ":" .. tostring(level) .. ":" .. CP.Farm.Generation()
+    local hit = reachSigs[guide]
+    if hit and hit.raw == raw then return hit.sig end
+    local reach, h, n = CP.Sourcing.Reach(ranks, level), 0, 0
+    for _, g in ipairs(gathered(guide)) do
+        for k = 2, 3 do
+            local line = g[k]
+            if line and ranks[line] and reach(line, g[1]) then
+                n = n + 1
+                h = (h * 31 + g[1] * 7 + line) % 2147483647
+            end
+        end
+    end
+    local sig = n .. "/" .. h
+    reachSigs[guide] = { raw = raw, sig = sig }
+    return sig
+end
+
 -- Everything Plan.Solve reads that can change while the window stays open, into `key`:
 -- the profession and its skill, the recipe set and colours, the settings, the faction, the
 -- held craft-only, prep and rare counts, pattern standings, Enchanting's needs (the
@@ -482,6 +536,7 @@ local function currentKey(key, p, recipes)
     key[13] = CP.db.deEnchant
     key[14] = guide and Prof.SpecKey(guide) or ""
     key[15] = Prof.OvertimeRank()
+    key[16] = guide and Plan.ReachKey(guide) or ""
 end
 
 function Plan.Current()
@@ -564,7 +619,7 @@ end
 -- give no point now or later, so a shut and an open solve of one character share a state.
 local function stateOf(guide, p, learned, opts)
     local parts = { p.skill, p.max, sortedKeys(learned), Plan.HeldKey(guide, true), standingKey(guide),
-                    Prof.SpecKey(guide), Prof.OvertimeRank() }
+                    Prof.SpecKey(guide), Prof.OvertimeRank(), Plan.ReachKey(guide) }
     if opts.credit then
         local items = {}
         for item, n in pairs(opts.deNeeds or {}) do
@@ -946,16 +1001,37 @@ local function tookCredit(id, guide, ctx, skills)
     return CP.Shared.Disenchants(guide)
 end
 
+-- True when saved plan `c` has a step from `skill` on that only a gathered material out of the
+-- player's reach (Sourcing.Reach) let in under "Gather it yourself". Plans saved before the reach
+-- rule (owner, 2026-11-27) counted a gathered material at any skill and level.
+local function outOfReach(guide, c, skill, learned)
+    local skills = skillsFor(guide)
+    local blind = CP.Sourcing.Filter(guide, learned, true, skills)
+    local reached = CP.Sourcing.Filter(guide, learned, true, skills, CP.Sourcing.PlayerReach())
+    for _, f in ipairs(c.steps or {}) do
+        local r = f[2] > skill and guide.recipes[f[3]]
+        if r and blind(f[3], r) and not reached(f[3], r) then return true end
+    end
+    return false
+end
+
 -- Each version 2, 3 or 4 saved plan of profession `id`, checked once. Before version 5 the credit read
 -- Enchanting's needs as last saved, so a plan that took it may have been made without it: that plan is
 -- dropped. Otherwise a version 4 plan is re-marked as the current version, and a version 2 or 3 plan is
 -- re-marked when it obeys decision 0008 rule 1. A dropped plan goes with the last plan's memo, so the next
 -- solve starts afresh. The credit question needs the skill list: until it lists profession `id`, a plan
 -- that obeys rule 1 keeps its version and is held as it stands. Returns true while that wait lasts.
-local function upgrade(id, guide, learned)
+-- A current plan saved before the reach rule (no `reach` mark) is checked once too, at `skill`: one
+-- that leans on a gathered material out of reach is dropped, else it is marked.
+local function upgrade(id, guide, learned, skill)
     local all, dropped = committedFor(id), false
     local skills = CP.Sourcing.PlayerSkills()
     local pending = not skills[id]
+    -- The reach check waits for the rank of every gathering profession the player has.
+    local ranks, unranked = CP.Gather.Skills(), false
+    for line in pairs(skills) do
+        if (CP.Sourcing.IsGathering(line) or line == CP.Gather.FISHING) and not ranks[line] then unranked = true end
+    end
     for ctx, c in pairs(all) do
         local v = c.version
         if v == 2 or v == 3 or v == 4 then
@@ -969,6 +1045,14 @@ local function upgrade(id, guide, learned)
                 dropped = true
             end
         end
+        if all[ctx] and c.version == Plan.COMMIT_VERSION and not c.reach and not pending and not unranked then
+            if tostring(ctx):find("collect=true", 1, true) and CP.db.collect and outOfReach(guide, c, skill, learned) then
+                all[ctx] = nil
+                dropped = true
+            else
+                c.reach = true
+            end
+        end
     end
     if dropped then
         if CP.charDB.lastPlan then CP.charDB.lastPlan[id] = nil end
@@ -979,7 +1063,7 @@ end
 
 -- Profession `p`'s saved plan before the solve: the one to hold to (or nil) and its locks.
 function Plan.Hold(p, guide, learned, dead, guess)
-    local pending = upgrade(p.id, guide, learned)
+    local pending = upgrade(p.id, guide, learned, p.skill)
     local all = committedFor(p.id)
     local c = heldPlan(all, Plan.Context(p.id), p, learned, pending, guess)
     local locks = c and Plan.Locks(c, guide, p.skill, learned, dead) or {}
@@ -1018,7 +1102,7 @@ function Plan.Commit(guide, p, learned, dead, plan, plain, costs, c, locks, base
         ors = out
         local was = c
         c = { version = Plan.COMMIT_VERSION, ctx = ctx, steps = steps, plain = plain and freeze(guide, plain) or nil,
-              made = was and was.made or 0, curKey = was and was.curKey, alias = was and was.alias }
+              made = was and was.made or 0, curKey = was and was.curKey, alias = was and was.alias, reach = true }
         all[ctx] = c
 
         -- The new plan's own locks are saved, so the next solve with nothing moved saves the same.
@@ -1382,7 +1466,8 @@ function Plan.Shut(id, peek)
     local key = table.concat({ skill, max, #known, readRev[id] or 0, tostring(unread), tostring(CP.db.collect),
         tostring(CP.db.fishCook), tostring(CP.db.deEnchant), enchantingKey(),
         guide and Plan.HeldKey(guide, true) or "",
-        guide and Plan.CreditKey(id) or "", guide and Prof.SpecKey(guide) or "", Prof.OvertimeRank() }, ":")
+        guide and Plan.CreditKey(id) or "", guide and Prof.SpecKey(guide) or "", Prof.OvertimeRank(),
+        guide and Plan.ReachKey(guide) or "" }, ":")
     local hit = shut[id]
     if hit and hit.key == key then return hit.live end
     hit = peeks[id]

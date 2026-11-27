@@ -1085,10 +1085,14 @@ end
 
 -- Save the materials the profession's guide needs to 300 and to its current cap, so the
 -- checklist has them with the profession window closed. `live` is from Plan.Current.
+-- The gathering reach (Plan.ReachKey) each guide's saved needs were made under.
+local needsReach = {}
+
 function Gather.SaveNeeds(live)
     local guide, p = live and live.guide, live and live.prof
     local key = guide and guideKey(guide)
     if not key or not live.plan then return end
+    needsReach[key] = CP.Plan.ReachKey(guide)
     local Q = CP.Queue
     local function needsTo(target) return Gather.NeedsTo(live, target) end
     CP.charDB.gatherNeeds = CP.charDB.gatherNeeds or {}
@@ -1135,20 +1139,22 @@ function Gather.Forget(key)
 end
 
 -- Needs for every guided profession the player has, from the skill list, so the
--- checklist knows them without each profession window being opened. Skipped while a
--- profession window is open; Plan.Current keeps that one exact. The plans are
--- Plan.Shut's, so a profession the window already solved costs no second solve.
+-- checklist knows them without each profession window being opened. While a profession
+-- window is open, Plan.Current keeps that one exact, and only the guides whose gathering
+-- reach moved since their needs were saved (a gathering skill-up, a level) are solved again.
+-- The plans are Plan.Shut's, so a profession the window already solved costs no second solve.
 function Gather.UpdateAllNeeds()
     if not (CP.Professions.preview or (C_SkillInfo and C_SkillInfo.GetSkillLineInfoByID)) then return end
-    if CP.Window and CP.Window.OpenID() then return end
+    local open = CP.Window and CP.Window.OpenID()
     for _, key in ipairs(Gather.SolveOrder()) do
-        local live = rankOf(CP.Professions.SkillLine(key)) and CP.Plan.Shut(key)
+        local skip = open and (key == open or needsReach[key] == CP.Plan.ReachKey(CP.Guides[key]))
+        local live = not skip and rankOf(CP.Professions.SkillLine(key)) and CP.Plan.Shut(key)
         if live then
             -- Without its recipe list, so SaveNeeds neither marks it the last profession
             -- opened nor rewrites its known recipes.
             Gather.SaveNeeds({ guide = live.guide, prof = live.prof, plan = live.plan, learned = live.learned,
                                shapedBy = live.shapedBy })
-        else
+        elseif not skip then
             if CP.charDB.gatherNeeds and CP.charDB.gatherNeeds[key] then
                 CP.charDB.gatherNeeds[key] = nil   -- profession dropped
                 if CP.charDB.needsShapedBy then CP.charDB.needsShapedBy[key] = nil end

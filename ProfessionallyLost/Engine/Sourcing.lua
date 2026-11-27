@@ -86,16 +86,51 @@ function Sourcing.GatherSkill(guide, itemID)
     return nil
 end
 
+-- Smelted bars: Metal & Stone that no node gives. The data holds no smelting skills, so Mining
+-- makes them at any rank.
+local METAL_STONE = 7
+
+-- A gathering profession's reach as the player stands (owner, 2026-11-27): `line` gets `itemID`
+-- only once a source the data holds takes their rank, and, with `level`, sits where they may farm
+-- (Farm.Reaches). `ranks` is skill line -> rank (Gather.Skills); a line with no rank read is not
+-- judged. Returns reach(line, itemID) for CanGet.
+function Sourcing.Reach(ranks, level)
+    local memo = {}
+    return function(line, itemID)
+        local rank = ranks and ranks[line]
+        if not rank or not CP.Farm or not CP.GatherData then return true end
+        local key = line .. ":" .. itemID
+        local ok = memo[key]
+        if ok == nil then
+            if CP.Farm.Reach(itemID, line) then
+                ok = CP.Farm.Reaches(itemID, line, rank, level)
+            else
+                local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
+                ok = line == CP.Gather.MINING and classID == TRADE_GOODS and subclassID == METAL_STONE
+            end
+            memo[key] = ok
+        end
+        return ok
+    end
+end
+
+-- The reach of the player's gathering professions now: their ranks and level.
+function Sourcing.PlayerReach()
+    return Sourcing.Reach(CP.Gather.Skills(), CP.Gather.PlayerLevel())
+end
+
 -- Whether the player can get a material without the auction house: vendor stock,
--- else any one of its sources (the gathering skill for its kind, or a profession
--- that crafts it, guide item field 3). A material with no known source is a drop.
-function Sourcing.CanGet(guide, itemID, skills)
+-- else any one of its sources (the gathering skill for its kind while `reach(line, item)` allows
+-- it, or a profession that crafts it, guide item field 3). A material with no known source is a drop.
+function Sourcing.CanGet(guide, itemID, skills, reach)
     local item = guide.items and guide.items[itemID]
     if item and item[2] then return true end
     local gather, also = Sourcing.GatherSkill(guide, itemID)
     local crafted = item and item[3]
     if not gather and not crafted then return true end
-    if gather and skills[gather] or also and skills[also] then return true end
+    for _, line in ipairs({ gather, also }) do
+        if skills[line] and (not reach or reach(line, itemID)) then return true end
+    end
     for _, line in ipairs(crafted or {}) do
         if skills[line] then return true end
     end
@@ -104,13 +139,13 @@ end
 
 -- The professions in `skills` but not in `solo` that let the player get `itemID`: the
 -- gathering profession for its kind, Fishing for a fish, and the other crafting professions
--- that make it. Empty when `solo` gets it too.
-function Sourcing.GotThrough(guide, itemID, skills, solo)
+-- that make it. Empty when `solo` gets it too. A gathering line counts while `reach` allows it.
+function Sourcing.GotThrough(guide, itemID, skills, solo, reach)
     local out = {}
-    if Sourcing.CanGet(guide, itemID, solo) or not Sourcing.CanGet(guide, itemID, skills) then return out end
+    if Sourcing.CanGet(guide, itemID, solo, reach) or not Sourcing.CanGet(guide, itemID, skills, reach) then return out end
     local gather, also = Sourcing.GatherSkill(guide, itemID)
     for _, line in ipairs({ gather, also }) do
-        if skills[line] and not solo[line] then out[#out + 1] = line end
+        if skills[line] and not solo[line] and (not reach or reach(line, itemID)) then out[#out + 1] = line end
     end
     local item = guide.items and guide.items[itemID]
     for _, line in ipairs(item and item[3] or {}) do
@@ -145,9 +180,9 @@ function Sourcing.CanGather(guide, recipe, skills)
 end
 
 -- Filter for Solver.Plan. `collect` limits recipes to materials the player can gather,
--- with `skills` (default: the player's). Each material's answer is kept for the filter's
--- life, one solve.
-function Sourcing.Filter(guide, learned, collect, skills)
+-- with `skills` (default: the player's) and `reach` (Sourcing.Reach; none judges no rank).
+-- Each material's answer is kept for the filter's life, one solve.
+function Sourcing.Filter(guide, learned, collect, skills, reach)
     local side = Sourcing.Side()
     skills = collect and (skills or Sourcing.PlayerSkills()) or nil
     local got = {}
@@ -158,7 +193,7 @@ function Sourcing.Filter(guide, learned, collect, skills)
                 local item = pair[1]
                 local can = got[item]
                 if can == nil then
-                    can = Sourcing.CanGet(guide, item, skills)
+                    can = Sourcing.CanGet(guide, item, skills, reach)
                     got[item] = can
                 end
                 if not can then return false end

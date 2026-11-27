@@ -61,14 +61,18 @@ Farm.FOUND = "ProfLost_FARM_FOUND"
 local cache = {}
 local itemLists = {}   -- Farm.Items' answers by key
 local job, generation, wanted = nil, 0, nil
+local reach, nodeLevels   -- Farm.Reach's answers and the node levels it reads
 
 function Farm.Reset()
     wipe(cache)
     wipe(itemLists)
-    index = nil
+    index, reach, nodeLevels = nil, nil, nil
     job, wanted = nil, nil
     generation = generation + 1
 end
+
+-- Bumped by each Farm.Reset, so a key built from Farm's answers knows when they may differ.
+function Farm.Generation() return generation end
 
 local OTHER_CONTINENT = 0.4   -- a zone across the sea: the boat or zeppelin costs more than half
 
@@ -253,6 +257,101 @@ end
 -- or a source of a gathering profession in `skills` (skill line -> rank).
 function Farm.Gatherable(item, skills)
     return G.IsCloth(item) or #ownSources(item, skills) > 0
+end
+
+-- Reach: what a gathering profession needs to get an item itself --------------------
+
+-- A node, pool or water counts as a source of an item at this chance per gather or better.
+-- Skinning counts a creature as its grind spots do (Gather.SkinFloor).
+Farm.REACH_MIN_CHANCE = 5
+
+-- Node entry -> the lowest level of the open zones that place it (zone `lvl[1]`, 1 when unknown).
+local function nodeLevel(entry)
+    if not nodeLevels then
+        nodeLevels = {}
+        for zone, z in pairs(CP.GatherData.zones) do
+            if not z.inst then
+                local low = z.lvl and z.lvl[1] or 1
+                for code, id in (rawget(z, "has") or ""):gmatch("(%a)(%d+)") do
+                    id = tonumber(id)
+                    if code == "n" and (not nodeLevels[id] or low < nodeLevels[id]) then nodeLevels[id] = low end
+                end
+                if not rawget(z, "has") then
+                    for id in pairs(z.nodes or {}) do
+                        if not nodeLevels[id] or low < nodeLevels[id] then nodeLevels[id] = low end
+                    end
+                end
+            end
+        end
+    end
+    return nodeLevels[entry]
+end
+
+-- Fishing's sources of `item`: open water and pools, each { skill, level }. A bite lands while the
+-- rank is above the water's base less 5 (Gather.LandChance).
+local function fishReach(item, out)
+    local D = CP.GatherData
+    local function landsAt(base) return base - 4 end
+    for zone, z in pairs(D.zones) do
+        if z.fish and not z.inst then
+            local low = z.lvl and z.lvl[1] or 1
+            for _, l in ipairs(D.loot[z.fish.loot] or {}) do
+                if l[1] == item and l[2] >= Farm.REACH_MIN_CHANCE then
+                    out[#out + 1] = { skill = math.max(1, landsAt(z.fish.base)), level = low }
+                end
+            end
+        end
+    end
+    for entry, n in pairs(D.nodes) do
+        if n[4] == G.FISHING then
+            for _, l in ipairs(D.loot[n[3]] or {}) do
+                if l[1] == item and l[2] >= Farm.REACH_MIN_CHANCE then
+                    for zone, z in pairs(D.zones) do
+                        if z.fish and not z.inst and G.Holds(zone, "nodes", entry) then
+                            out[#out + 1] = { skill = math.max(1, landsAt(z.fish.base)), level = z.lvl and z.lvl[1] or 1 }
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- What gathering profession `line` needs to get `item` itself, by the data: one { skill, level }
+-- per source (the skill the source asks, and the lowest level of the creature or of the zones that
+-- hold it), or nil when the data holds no source of the item for `line`. Kept until Farm.Reset.
+function Farm.Reach(item, line)
+    reach = reach or {}
+    local key = item .. ":" .. line
+    local hit = reach[key]
+    if hit ~= nil then return hit or nil end
+    local out = {}
+    if line == G.FISHING then
+        fishReach(item, out)
+    else
+        for _, src in ipairs(ownSources(item, { [line] = 0 })) do
+            if src.prof == line then
+                if src.kind == "mob" then
+                    out[#out + 1] = { skill = src.skill, level = src.minLevel }
+                elseif src.chance >= Farm.REACH_MIN_CHANCE then
+                    out[#out + 1] = { skill = src.skill, level = nodeLevel(src.entry) or 1 }
+                end
+            end
+        end
+    end
+    reach[key] = #out > 0 and out or false
+    return reach[key] or nil
+end
+
+-- True when `line` at `rank` gets `item` from a source a character of `level` may farm: a
+-- creature at most Gather.FARM_SAFE_LEVELS above them, a node or water in a zone no further
+-- above (Farm.Best's rule). Nil `level` judges the skill alone.
+function Farm.Reaches(item, line, rank, level)
+    for _, src in ipairs(Farm.Reach(item, line) or {}) do
+        if rank >= src.skill and (not level or src.level <= level + G.FARM_SAFE_LEVELS) then return true end
+    end
+    return false
 end
 
 local function dataKind(src) return src.kind == "mob" and "mobs" or "nodes" end
