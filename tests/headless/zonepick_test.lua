@@ -755,7 +755,7 @@ T.test("Farm: the heading says Prices Stale only for an auction price over a day
     World.set(CP.Pricing, "SaleValue", function(item) return 100, 900 end)
     World.set(CP.Pricing, "AuctionAge", function() return 90000 end)
     GL.Refresh()
-    T.eq(GL.Drawn()[1].text, GL.FARM_HEAD_STALE)
+    T.eq(GL.Drawn()[1].text, GL.FARM_HEAD_STALE:format(1))
     World.set(CP.Pricing, "AuctionAge", function() return 3600 end)
     GL.Refresh()
     T.eq(GL.Drawn()[1].text, GL.FARM_HEAD_PROFIT, "fresh")
@@ -766,6 +766,33 @@ T.test("Farm: the heading says Prices Stale only for an auction price over a day
     World.set(CP.Pricing, "AuctionAge", function() return 90000 end)
     GL.Refresh()
     T.eq(GL.Drawn()[1].text, GL.FARM_HEAD_PROFIT, "vendor price is never stale")
+end)
+
+T.test("Farm: a stale heading says how old the oldest shown auction price is, in whole days", function()
+    local DAY = 86400
+    owner("farm")
+    World.set(CP.Pricing, "SaleValue", function(item) return 100, 900 end)
+    World.set(CP.Pricing, "AuctionAge", function() return DAY + 1 end)
+    GL.Refresh()
+    T.eq(GL.Drawn()[1].text, "Profit (Prices Stale - 1d old)", "just over a day reads 1d")
+    -- Each shown good its own age; the heading names the oldest.
+    local shown = {}
+    for _, l in ipairs((GL.Drawn())) do
+        if l.kind == "plan" and l.itemID then shown[#shown + 1] = l.itemID end
+    end
+    T.ok(#shown >= 2, "two or more goods shown: " .. #shown)
+    local oldest = shown[#shown]
+    World.set(CP.Pricing, "AuctionAge", function(item) return item == oldest and 3 * DAY + 600 or DAY + 60 end)
+    GL.Refresh()
+    T.eq(GL.Drawn()[1].text, "Profit (Prices Stale - 3d old)", "the oldest shown price")
+    -- A better zone's auction price counts too.
+    World.set(CP.Pricing, "SaleValue", function(item) return nil, item == 8170 and 20000 or 100 end)
+    World.set(CP.Farm, "Items", function() return { LIGHT, 8170 } end)
+    World.set(CP.Farm, "Find", function() return { zone = WINTERSPRING, score = 1 }, true end)
+    World.set(CP.Pricing, "AuctionAge", function(item) return item == 8170 and 5 * DAY or 600 end)
+    GL.Refresh()
+    T.ok(bestLine() ~= nil, "a Best farm line")
+    T.eq(GL.Drawn()[1].text, "Profit (Prices Stale - 5d old)", "the better zone's price is the oldest")
 end)
 
 T.test("a skill-up line shows the skill it gives points at, in the profession window's colour", function()
