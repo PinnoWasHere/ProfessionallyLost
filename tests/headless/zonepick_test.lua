@@ -581,7 +581,7 @@ T.test("Farm leads with what sells here and names no guide need", function()
     World.set(CP.Pricing, "SaleValue", function(item) return 100, item == MEDIUM and 9000 or 500 end)
     GL.Refresh()
     local drawn = GL.Drawn()
-    T.eq(drawn[1] and drawn[1].text, GL.FARM_HEAD_WORTH, "Sells best here leads")
+    T.eq(drawn[1] and drawn[1].text, GL.FARM_HEAD_PROFIT, "Profit leads")
     T.eq(drawn[2] and drawn[2].itemID, MEDIUM, "the dearest first")
     T.eq(drawn[2] and drawn[2].info, CP.Pricing.Format(9000) .. " ea (AH)", "an auction price says AH")
     for _, l in ipairs(drawn) do
@@ -603,7 +603,7 @@ T.test("Farm: a price from the vendor says Vendor, none says no price yet", func
     T.eq(drawn[2] and drawn[2].info, GL.FARM_NO_PRICE)
 end)
 
-T.test("Farm in a zone that sells for little says so and points to better farm zones", function()
+T.test("Farm in a zone that sells for little shows its profit and points to better farm zones", function()
     owner("farm")
     World.set(CP.Pricing, "SaleValue", function(item) return 5, item == 8170 and 20000 or nil end)
     World.set(CP.Farm, "Items", function() return { LIGHT, 8170 } end)
@@ -614,7 +614,7 @@ T.test("Farm in a zone that sells for little says so and points to better farm z
     end)
     GL.Refresh()
     local drawn = GL.Drawn()
-    T.eq(drawn[1] and drawn[1].text, GL.FARM_HEAD_LITTLE)
+    T.eq(drawn[1] and drawn[1].text, GL.FARM_HEAD_PROFIT)
     T.eq(asked, 8170, "the better zone is the dearest material's")
     local better
     for _, l in ipairs(drawn) do
@@ -630,6 +630,75 @@ T.test("Farm in a zone that sells for little says so and points to better farm z
         if tostring(l.text):find("^Best farm") then waiting = l.text end
     end
     T.eq(waiting, GL.FARM_BETTER:format(CP.GatherGuide.WARM.waiting), "while the search runs")
+end)
+
+local function bestLine()
+    for _, l in ipairs((GL.Drawn())) do
+        if tostring(l.text):find("^Best farm") then return l.text end
+    end
+end
+
+T.test("Farm: cheap leather here and a dearer reachable zone shows Profit and a Best farm line", function()
+    owner("farm")
+    World.set(CP.Pricing, "SaleValue", function(item) return nil, item == 8170 and 20000 or 100 end)
+    World.set(CP.Farm, "Items", function() return { LIGHT, 8170 } end)
+    World.set(CP.Farm, "Find", function() return { zone = WINTERSPRING, score = 1 }, true end)
+    GL.Refresh()
+    T.eq(GL.Drawn()[1].text, GL.FARM_HEAD_PROFIT)
+    T.ok(bestLine() and bestLine():find("Winterspring", 1, true), tostring(bestLine()))
+end)
+
+T.test("Farm: nothing reachable beats twice the best here, so Profit and no Best farm line", function()
+    owner("farm")
+    World.set(CP.Pricing, "SaleValue", function(item) return nil, item == 8170 and 150 or 100 end)
+    World.set(CP.Farm, "Items", function() return { LIGHT, 8170 } end)
+    World.set(CP.Farm, "Find", function() return { zone = WINTERSPRING, score = 1 }, true end)
+    GL.Refresh()
+    T.eq(GL.Drawn()[1].text, GL.FARM_HEAD_PROFIT)
+    T.eq(bestLine(), nil, "no better zone")
+end)
+
+T.test("Farm: a zone the player's skills do not reach is never named", function()
+    owner("farm")
+    World.set(CP.Pricing, "SaleValue", function(item) return nil, item == 8170 and 20000 or 100 end)
+    local asked
+    World.set(CP.Farm, "Find", function(item, opts)
+        asked = opts and opts.skills
+        return nil, true
+    end)
+    GL.Refresh()
+    T.ok(asked ~= nil, "Find gets the player's skills")
+    T.eq(bestLine(), nil, "no zone named")
+    local skills = { [SKIN] = 1 }
+    T.ok(not CP.Farm.Find(8170, { level = 60, skills = skills, side = "Horde" }), "no Rugged Leather at Skinning 1")
+end)
+
+T.test("Farm: the higher of the auction and vendor price is shown and ranked", function()
+    owner("farm")
+    World.set(CP.Pricing, "SaleValue", function(item) return 900, 400 end)
+    GL.Refresh()
+    T.eq(GL.Drawn()[2].info, CP.Pricing.Format(900) .. " ea (Vendor)", "vendor beats the cheaper auction")
+    World.set(CP.Pricing, "SaleValue", function(item) return 400, 900 end)
+    GL.Refresh()
+    T.eq(GL.Drawn()[2].info, CP.Pricing.Format(900) .. " ea (AH)", "auction beats the vendor")
+end)
+
+T.test("Farm: the heading says Prices Stale only for an auction price over a day old", function()
+    owner("farm")
+    World.set(CP.Pricing, "SaleValue", function(item) return 100, 900 end)
+    World.set(CP.Pricing, "AuctionAge", function() return 90000 end)
+    GL.Refresh()
+    T.eq(GL.Drawn()[1].text, GL.FARM_HEAD_STALE)
+    World.set(CP.Pricing, "AuctionAge", function() return 3600 end)
+    GL.Refresh()
+    T.eq(GL.Drawn()[1].text, GL.FARM_HEAD_PROFIT, "fresh")
+    World.set(CP.Pricing, "AuctionAge", function() return nil end)
+    GL.Refresh()
+    T.eq(GL.Drawn()[1].text, GL.FARM_HEAD_PROFIT, "no age given")
+    World.set(CP.Pricing, "SaleValue", function(item) return 900, 100 end)
+    World.set(CP.Pricing, "AuctionAge", function() return 90000 end)
+    GL.Refresh()
+    T.eq(GL.Drawn()[1].text, GL.FARM_HEAD_PROFIT, "vendor price is never stale")
 end)
 
 T.test("a skill-up line shows the skill it gives points at, in the profession window's colour", function()

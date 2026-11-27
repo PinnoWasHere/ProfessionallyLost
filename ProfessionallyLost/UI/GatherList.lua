@@ -2084,16 +2084,16 @@ end
 
 -- Farm's worth -----------------------------------------------------------------------
 
--- Farm is for gold: its list leads with what the zone's materials sell for. A zone whose best
--- material is under FARM_WORTH_MIN says so, names what it has, and points to zones with a
--- material worth FARM_BETTER_RATIO times more (Farm.Find), when the player can farm one.
-GatherList.FARM_WORTH_MIN = 2500     -- copper each: a material worth this is worth farming
+-- Farm is for gold: its list leads with the profit, what the zone's materials sell for. It
+-- also points to zones with a material worth FARM_BETTER_RATIO times more (Farm.Find), among the
+-- zones the player's gathering skills reach.
 GatherList.FARM_BETTER_RATIO = 2     -- a better zone's material sells for this many times the best here
 GatherList.FARM_MIN_CHANCE = 25      -- percent: a source this likely counts for a better zone
 GatherList.FARM_CANDIDATES = 6       -- the most valuable materials looked up for better zones
 GatherList.FARM_SHOW = 3             -- materials and better zones named at most
-GatherList.FARM_HEAD_WORTH = "Sells best here"
-GatherList.FARM_HEAD_LITTLE = "Sells for little here"
+GatherList.FARM_HEAD_PROFIT = "Profit"
+GatherList.FARM_HEAD_STALE = "Profit (Prices Stale)"
+GatherList.FARM_STALE_AGE = 86400    -- seconds: an auction price older than this is stale
 GatherList.FARM_HEAD_UNPRICED = "To farm here"
 GatherList.FARM_HAS = "Here: %s"
 GatherList.FARM_BETTER = "Best farm: %s"
@@ -2101,18 +2101,30 @@ GatherList.FARM_EACH = "%s ea (%s)"
 GatherList.TAG_AH, GatherList.TAG_VENDOR = "AH", "Vendor"
 GatherList.FARM_NO_PRICE = "no price yet"
 
+-- What one `item` sells for: the auction price when it beats the vendor's, else the vendor's.
+-- Returns value, tag ("AH" or "Vendor"), stale. Both prices are after the auction cut, so they
+-- compare like for like. An auction source that gives no age is never stale.
+function GatherList.SalePrice(item)
+    local vendor, ah = CP.Pricing.SaleValue(item)
+    if ah and (not vendor or ah > vendor) then
+        local age = CP.Pricing.AuctionAge(item)
+        return ah, GatherList.TAG_AH, age ~= nil and age > GatherList.FARM_STALE_AGE
+    end
+    if vendor then return vendor, GatherList.TAG_VENDOR, false end
+    return nil, nil, false
+end
+
 -- What the player can farm in `zone` with `skills`: { { item, value } }, most valuable first.
--- `value` is one item's sale (Pricing.SaleValue: the auction price after its cut, else the
--- vendor's), nil when unknown; `tag` says which ("AH" or "Vendor"). The same goods Farm's sections list: leathers, herbs and ore
+-- `value` is one item's sale (SalePrice), nil when unknown; `tag` says which ("AH" or "Vendor"),
+-- `stale` that an auction price is old. The same goods Farm's sections list: leathers, herbs and ore
 -- the skills reach, Cooking's goods, cloth and the fish in `items`.
 function GatherList.FarmGoods(zone, items, skills)
     local seen, out = {}, {}
     local function add(item)
         if item and item > 0 and not seen[item] then
             seen[item] = true
-            local vendor, ah = CP.Pricing.SaleValue(item)
-            out[#out + 1] = { item = item, value = ah or vendor,
-                              tag = ah and GatherList.TAG_AH or vendor and GatherList.TAG_VENDOR or nil }
+            local value, tag, stale = GatherList.SalePrice(item)
+            out[#out + 1] = { item = item, value = value, tag = tag, stale = stale }
         end
     end
     if skills[Gather.SKINNING] then
@@ -2137,18 +2149,16 @@ function GatherList.FarmGoods(zone, items, skills)
     return out
 end
 
--- Zones with a material worth FARM_BETTER_RATIO times `best` (and FARM_WORTH_MIN at least) that
--- the player can farm: { "Zone (Material) 45s AH" }, at most FARM_SHOW, the most valuable first. True
--- second while a search still runs; Farm.FOUND then rebuilds the list.
+-- Zones with a material worth FARM_BETTER_RATIO times `best` that the player's skills reach: { "Zone (Material) 45s AH" }, at most FARM_SHOW, the most valuable first. True
+-- second while a search still runs, a third value says an auction price used is stale; Farm.FOUND then rebuilds the list.
 function GatherList.FarmBetter(zone, best)
     local skills, level = Gather.Skills(), Gather.PlayerLevel()
-    local floor = math.max(GatherList.FARM_WORTH_MIN, (best or 0) * GatherList.FARM_BETTER_RATIO)
+    local floor = (best or 0) * GatherList.FARM_BETTER_RATIO
     local cand = {}
     for _, item in ipairs(CP.Farm.Items(skills, level, GatherList.FARM_MIN_CHANCE)) do
-        local vendor, ah = CP.Pricing.SaleValue(item)
-        local value = ah or vendor
-        if value and value >= floor then
-            cand[#cand + 1] = { item = item, value = value, tag = ah and GatherList.TAG_AH or GatherList.TAG_VENDOR }
+        local value, tag, stale = GatherList.SalePrice(item)
+        if value and value > 0 and value >= floor then
+            cand[#cand + 1] = { item = item, value = value, tag = tag, stale = stale }
         end
     end
     table.sort(cand, function(a, b)
@@ -2157,18 +2167,19 @@ function GatherList.FarmBetter(zone, best)
     end)
     local opts = { level = level, side = UnitFactionGroup("player"), skills = skills,
                    continent = (CP.Waypoint.PlayerWorld()) }
-    local out, seen = {}, {}
+    local out, seen, old = {}, {}, false
     for i, c in ipairs(cand) do
         if i > GatherList.FARM_CANDIDATES or #out >= GatherList.FARM_SHOW then break end
         local found, known = CP.Farm.Find(c.item, opts)
-        if not known then return out, true end
+        if not known then return out, true, old end
         if found and found.zone ~= zone and not seen[found.zone] then
             seen[found.zone] = true
             out[#out + 1] = ("%s (%s) %s %s"):format(zoneName(found.zone), nameOf(c.item),
                 CP.Pricing.Format(c.value), c.tag)
+            old = old or c.stale
         end
     end
-    return out, false
+    return out, false, old
 end
 
 -- Everything `zone` holds to gather, as each profession's range: "Skinning 1-95 · Mining 1-65".
@@ -2181,23 +2192,23 @@ function GatherList.ZoneHas(zone)
     return #parts > 0 and table.concat(parts, " · ") or nil
 end
 
--- The lines Farm leads with in `zone`: what sells best here, or that little does, with what
--- the zone has and better zones to farm.
+-- The lines Farm leads with in `zone`: the profit, what the zone has and better zones to farm.
 function GatherList.WorthLines(zone, items, skills)
     if not zone or Gather.IsInstance(zone) then return {} end
     local goods = GatherList.FarmGoods(zone, items, skills)
     local priced = #goods == 0 or goods[1].value ~= nil
     local best = goods[1] and goods[1].value or 0
-    local better, waiting
-    if priced and best < GatherList.FARM_WORTH_MIN then better, waiting = GatherList.FarmBetter(zone, best) end
-    local little = better ~= nil and (#better > 0 or waiting)
+    local better, waiting, old
+    if priced then better, waiting, old = GatherList.FarmBetter(zone, best) end
     local out = {}
     if #goods == 0 then
         local has = GatherList.ZoneHas(zone)
         if has then out[1] = { kind = "plan", muted = true, text = GatherList.FARM_HAS:format(has) } end
     else
+        local stale = old or false
+        for i = 1, math.min(#goods, GatherList.FARM_SHOW) do stale = stale or goods[i].stale end
         local head = not priced and GatherList.FARM_HEAD_UNPRICED
-            or little and GatherList.FARM_HEAD_LITTLE or GatherList.FARM_HEAD_WORTH
+            or stale and GatherList.FARM_HEAD_STALE or GatherList.FARM_HEAD_PROFIT
         out[1] = subHead(head)
         for i = 1, math.min(#goods, GatherList.FARM_SHOW) do
             local g = goods[i]
