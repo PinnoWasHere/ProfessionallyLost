@@ -165,7 +165,7 @@ CP.Guides[202] = {
         [2318] = { 60, false, { 165 }, 1.6, src = "skin 2318" },
         [2319] = { 200, false, { 165 }, 2.1, src = "skin 2318" },
         [2589] = { 55, false, nil, 2.6 },
-        [2592] = { 135, false, nil, 3.5, src = "skin 2934" },
+        [2592] = { 135, false, nil, 4.7 },
         [2835] = { 8, false, nil, 1.0, src = "node 2770" },
         [2836] = { 60, false, nil, 1.0, src = "node 2771" },
         [2838] = { 240, false, nil, 1.2, src = "node 2772" },
