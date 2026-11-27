@@ -32,9 +32,6 @@ local DEFAULTS = {
     minimapButton = true, -- the minimap button; LibDBIcon's hide follows it
     whatsNew = true,      -- What's New once after each update (UI/News.lua)
     newerNotice = true,   -- a note when another player runs a newer ProfLost (Engine/Peers.lua)
-    gloweyGuide = false,  -- the leveling guide left to Glowey's Recipes (Core/Glowey.lua)
-    gloweyBuy = false,    -- the vendor Buy button left to Glowey's Recipes
-    gloweyTips = false,   -- the item tooltip lines left to Glowey's Recipes
 }
 CP.DEFAULTS = DEFAULTS   -- read by the DaylightUI plugin for its module's defaults
 
@@ -359,6 +356,8 @@ function CP.CarryOver(db)
         if existing then db.gatherScaleCarried = true end
         db.scalesSplit = true
     end
+    -- ProfLost's own Glowey's Recipes switches. Its six switches hold the choice now (Core/Glowey.lua).
+    db.gloweyGuide, db.gloweyBuy, db.gloweyTips = nil, nil, nil
     return db
 end
 
