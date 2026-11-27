@@ -2097,8 +2097,7 @@ GatherList.PROFIT_KEY = "profit"     -- the Profit section's fold key in farmClo
 GatherList.FARM_HEAD_STALE = "Profit (Prices Stale - %dd old)"   -- the oldest shown auction price's age
 GatherList.FARM_STALE_AGE = 86400    -- seconds: an auction price older than this is stale
 GatherList.FARM_AGE_UNIT = 86400     -- seconds in one unit of the stale heading's age
-GatherList.FARM_HEAD_UNPRICED = "To farm here"
-GatherList.FARM_HAS = "Here: %s"
+GatherList.FARM_NONE = "No goods to sell here for your skills"
 GatherList.FARM_BETTER = "Best farm: %s"
 GatherList.FARM_BETTER_SHORT = "Best: %s"   -- the Best farm lead when the full text does not fit
 GatherList.FARM_EACH = "%s ea (%s)"
@@ -2206,39 +2205,35 @@ function GatherList.ZoneHas(zone)
     return #parts > 0 and table.concat(parts, " · ") or nil
 end
 
--- The lines Farm leads with in `zone`: the profit, what the zone has and better zones to farm.
+-- The lines Farm leads with in `zone`: the Profit section, in every outdoor zone. It lists the
+-- zone's dearest goods, or FARM_NONE when the skills gather nothing here to sell, then the better
+-- zones to farm. With no price for any good here, every priced material elsewhere counts as better.
 function GatherList.WorthLines(zone, items, skills)
     if not zone or Gather.IsInstance(zone) then return {} end
     local goods = GatherList.FarmGoods(zone, items, skills)
-    local priced = #goods == 0 or goods[1].value ~= nil
     local best = goods[1] and goods[1].value or 0
-    local better, waiting, old
-    if priced then better, waiting, old = GatherList.FarmBetter(zone, best) end
-    local out, folded = {}, false
+    local better, waiting, old = GatherList.FarmBetter(zone, best)
+    local oldest = old
+    for i = 1, math.min(#goods, GatherList.FARM_SHOW) do oldest = older(oldest, goods[i].age) end
+    local stale = oldest and oldest > GatherList.FARM_STALE_AGE
+    local head = stale and GatherList.FARM_HEAD_STALE:format(math.floor(oldest / GatherList.FARM_AGE_UNIT))
+        or GatherList.FARM_HEAD_PROFIT
+
+    -- Profit folds like a profession section; the goods and better zones sit under it.
+    local folded = (CP.db[GatherList.FoldKey()] or {})[GatherList.PROFIT_KEY]
+    local out = { { kind = "section", key = GatherList.PROFIT_KEY, closed = folded, text = head } }
+    if folded then return out end
     if #goods == 0 then
-        local has = GatherList.ZoneHas(zone)
-        if has then out[1] = { kind = "plan", muted = true, text = GatherList.FARM_HAS:format(has) } end
-    else
-        local oldest = old
-        for i = 1, math.min(#goods, GatherList.FARM_SHOW) do oldest = older(oldest, goods[i].age) end
-        local stale = oldest and oldest > GatherList.FARM_STALE_AGE
-        local head = not priced and GatherList.FARM_HEAD_UNPRICED
-            or stale and GatherList.FARM_HEAD_STALE:format(math.floor(oldest / GatherList.FARM_AGE_UNIT))
-            or GatherList.FARM_HEAD_PROFIT
-        -- Profit folds like a profession section; the goods and better zones sit under it.
-        folded = (CP.db[GatherList.FoldKey()] or {})[GatherList.PROFIT_KEY]
-        out[1] = { kind = "section", key = GatherList.PROFIT_KEY, closed = folded, text = head }
-        for i = 1, folded and 0 or math.min(#goods, GatherList.FARM_SHOW) do
-            local g = goods[i]
-            out[#out + 1] = { kind = "plan", indent = 30, textColor = S.color.text, itemID = g.item,
-                text = iconText(g.item, nameOf(g.item)),
-                info = g.value and GatherList.FARM_EACH:format(CP.Pricing.Format(g.value), g.tag)
-                    or GatherList.FARM_NO_PRICE }
-        end
+        out[2] = { kind = "plan", muted = true, indent = 30, text = GatherList.FARM_NONE }
     end
-    if folded then
-        return out
-    elseif better and #better > 0 then
+    for i = 1, math.min(#goods, GatherList.FARM_SHOW) do
+        local g = goods[i]
+        out[#out + 1] = { kind = "plan", indent = 30, textColor = S.color.text, itemID = g.item,
+            text = iconText(g.item, nameOf(g.item)),
+            info = g.value and GatherList.FARM_EACH:format(CP.Pricing.Format(g.value), g.tag)
+                or GatherList.FARM_NO_PRICE }
+    end
+    if better and #better > 0 then
         -- One row per zone, the lead on the first; the price sits in the info column like a material's.
         -- Later zones hang off the first (spotOf), so the whole Best farm group lights as one.
         -- Each row stays one line: the wrap fits its text to the room left of the price (FarmFit).
