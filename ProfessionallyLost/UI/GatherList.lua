@@ -2092,6 +2092,7 @@ GatherList.FARM_MIN_CHANCE = 25      -- percent: a source this likely counts for
 GatherList.FARM_CANDIDATES = 6       -- the most valuable materials looked up for better zones
 GatherList.FARM_SHOW = 3             -- materials and better zones named at most
 GatherList.FARM_HEAD_PROFIT = "Profit"
+GatherList.PROFIT_KEY = "profit"     -- the Profit section's fold key in farmClosed
 GatherList.FARM_HEAD_STALE = "Profit (Prices Stale)"
 GatherList.FARM_STALE_AGE = 86400    -- seconds: an auction price older than this is stale
 GatherList.FARM_HEAD_UNPRICED = "To farm here"
@@ -2149,7 +2150,7 @@ function GatherList.FarmGoods(zone, items, skills)
     return out
 end
 
--- Zones with a material worth FARM_BETTER_RATIO times `best` that the player's skills reach: { "Zone (Material) 45s AH" }, at most FARM_SHOW, the most valuable first. True
+-- Zones with a material worth FARM_BETTER_RATIO times `best` that the player's skills reach: { { text = "Zone (Material)", info = "45s ea (AH)" } }, at most FARM_SHOW, the most valuable first. True
 -- second while a search still runs, a third value says an auction price used is stale; Farm.FOUND then rebuilds the list.
 function GatherList.FarmBetter(zone, best)
     local skills, level = Gather.Skills(), Gather.PlayerLevel()
@@ -2174,8 +2175,8 @@ function GatherList.FarmBetter(zone, best)
         if not known then return out, true, old end
         if found and found.zone ~= zone and not seen[found.zone] then
             seen[found.zone] = true
-            out[#out + 1] = ("%s (%s) %s %s"):format(zoneName(found.zone), nameOf(c.item),
-                CP.Pricing.Format(c.value), c.tag)
+            out[#out + 1] = { text = ("%s (%s)"):format(zoneName(found.zone), nameOf(c.item)),
+                info = GatherList.FARM_EACH:format(CP.Pricing.Format(c.value), c.tag) }
             old = old or c.stale
         end
     end
@@ -2200,7 +2201,7 @@ function GatherList.WorthLines(zone, items, skills)
     local best = goods[1] and goods[1].value or 0
     local better, waiting, old
     if priced then better, waiting, old = GatherList.FarmBetter(zone, best) end
-    local out = {}
+    local out, folded = {}, false
     if #goods == 0 then
         local has = GatherList.ZoneHas(zone)
         if has then out[1] = { kind = "plan", muted = true, text = GatherList.FARM_HAS:format(has) } end
@@ -2209,8 +2210,10 @@ function GatherList.WorthLines(zone, items, skills)
         for i = 1, math.min(#goods, GatherList.FARM_SHOW) do stale = stale or goods[i].stale end
         local head = not priced and GatherList.FARM_HEAD_UNPRICED
             or stale and GatherList.FARM_HEAD_STALE or GatherList.FARM_HEAD_PROFIT
-        out[1] = subHead(head)
-        for i = 1, math.min(#goods, GatherList.FARM_SHOW) do
+        -- Profit folds like a profession section; the goods and better zones sit under it.
+        folded = (CP.db[GatherList.FoldKey()] or {})[GatherList.PROFIT_KEY]
+        out[1] = { kind = "section", key = GatherList.PROFIT_KEY, closed = folded, text = head }
+        for i = 1, folded and 0 or math.min(#goods, GatherList.FARM_SHOW) do
             local g = goods[i]
             out[#out + 1] = { kind = "plan", indent = 30, textColor = S.color.text, itemID = g.item,
                 text = iconText(g.item, nameOf(g.item)),
@@ -2218,8 +2221,14 @@ function GatherList.WorthLines(zone, items, skills)
                     or GatherList.FARM_NO_PRICE }
         end
     end
-    if better and #better > 0 then
-        out[#out + 1] = { kind = "plan", indent = 30, text = GatherList.FARM_BETTER:format(table.concat(better, ", ")) }
+    if folded then
+        return out
+    elseif better and #better > 0 then
+        -- One row per zone, the lead on the first; the price sits in the info column like a material's.
+        for i, b in ipairs(better) do
+            out[#out + 1] = { kind = "plan", indent = 30,
+                text = i == 1 and GatherList.FARM_BETTER:format(b.text) or b.text, info = b.info }
+        end
     elseif waiting then
         out[#out + 1] = { kind = "plan", muted = true, indent = 30,
             text = GatherList.FARM_BETTER:format(CP.GatherGuide.WARM.waiting) }

@@ -616,20 +616,24 @@ T.test("Farm in a zone that sells for little shows its profit and points to bett
     local drawn = GL.Drawn()
     T.eq(drawn[1] and drawn[1].text, GL.FARM_HEAD_PROFIT)
     T.eq(asked, 8170, "the better zone is the dearest material's")
-    local better
-    for _, l in ipairs(drawn) do
-        if tostring(l.text):find("^Best farm") then better = l.text end
+    local better, at
+    for i, l in ipairs(drawn) do
+        if tostring(l.text):find("^Best farm") then better, at = l, i end
     end
-    T.ok(better and better:find("Winterspring", 1, true), tostring(better))
-    T.ok(better and better:find("^Best farm: Winterspring %(.*%) " .. CP.Pricing.Format(20000) .. " AH$") ~= nil,
-        "location, material, price and source: " .. tostring(better))
+    T.ok(better and better.text:find("Winterspring", 1, true), tostring(better and better.text))
+    T.ok(better and better.text:find("^Best farm: Winterspring %(.*%)$") ~= nil,
+        "location and material in the text: " .. tostring(better and better.text))
+    T.eq(better and better.info, CP.Pricing.Format(20000) .. " ea (AH)", "price and source in the info column")
+    T.ok(drawn[at + 1] == nil or drawn[at + 1].kind ~= "cont", "no wrapped continuation")
+    T.eq(better and better.wrapped, nil, "the info stays beside the text")
     World.set(CP.Farm, "Find", function() return nil, false end)
     GL.Refresh()
     local waiting
     for _, l in ipairs((GL.Drawn())) do
-        if tostring(l.text):find("^Best farm") then waiting = l.text end
+        if tostring(l.text):find("^Best farm") then waiting = l end
     end
-    T.eq(waiting, GL.FARM_BETTER:format(CP.GatherGuide.WARM.waiting), "while the search runs")
+    T.eq(waiting and waiting.text, GL.FARM_BETTER:format(CP.GatherGuide.WARM.waiting), "while the search runs")
+    T.eq(waiting and waiting.wrapped, nil, "one row while it runs")
 end)
 
 local function bestLine()
@@ -637,6 +641,32 @@ local function bestLine()
         if tostring(l.text):find("^Best farm") then return l.text end
     end
 end
+
+T.test("Farm: Profit is a section heading like the professions' and folds the same way", function()
+    owner("farm")
+    World.set(CP.Pricing, "SaleValue", function(item) return nil, item == 8170 and 20000 or 100 end)
+    World.set(CP.Farm, "Items", function() return { LIGHT, 8170 } end)
+    World.set(CP.Farm, "Find", function() return { zone = WINTERSPRING, score = 1 }, true end)
+    GL.Refresh()
+    local drawn = GL.Drawn()
+    local head, skin
+    for _, l in ipairs(drawn) do
+        if l.kind == "section" and l.key == GL.PROFIT_KEY then head = l end
+        if l.kind == "section" and l.key == SKIN then skin = l end
+    end
+    T.ok(head ~= nil and skin ~= nil, "both are sections")
+    T.eq(head and head.indent, skin and skin.indent, "same indent")
+    T.eq(head and head.subhead, nil, "not a subheading")
+    T.ok(bestLine() ~= nil, "better zone listed while open")
+    CP.db.farmClosed = { [GL.PROFIT_KEY] = true }
+    GL.Refresh()
+    drawn = GL.Drawn()
+    T.eq(drawn[1].key, GL.PROFIT_KEY)
+    T.eq(drawn[1].closed, true)
+    T.eq(drawn[2].kind, "section", "its goods and better zones fold away")
+    T.eq(bestLine(), nil)
+    CP.db.farmClosed = nil
+end)
 
 T.test("Farm: cheap leather here and a dearer reachable zone shows Profit and a Best farm line", function()
     owner("farm")
