@@ -1005,10 +1005,11 @@ local function itemTip(self)
     local itemID = line and (line.kind == "item" and line.row.itemID
         or line.kind == "pattern" and line.itemID)
     if not itemID then
-        if not (line and line.tip and line.tip[1]) then return end
+        local tip = line and line.nav and GatherList.FarmNavTip(line.nav, line.tip) or line and line.tip
+        if not (tip and tip[1]) then return end
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText(line.tip[1], 1, 1, 1, 1, true)
-        for i = 2, #line.tip do GameTooltip:AddLine(line.tip[i], 0.9, 0.9, 0.9, true) end
+        GameTooltip:SetText(tip[1], 1, 1, 1, 1, true)
+        for i = 2, #tip do GameTooltip:AddLine(tip[i], 0.9, 0.9, 0.9, true) end
         GameTooltip:Show()
         return
     end
@@ -1107,6 +1108,9 @@ local function makeRow(i)
         if line and line.pin then line.pin() end
     end)
     r.pin:SetPoint("RIGHT", -2, 0)
+    -- The pin's hover is its row's: the same tooltip and light.
+    r.pin:HookScript("OnEnter", function(self) rowEnter(self:GetParent()) end)
+    r.pin:HookScript("OnLeave", function() rowLeave() end)
     r.info = S.Column(S.Text(r, "small", S.color.muted))
     r.info:SetJustifyH("RIGHT")
     r.count = S.Column(S.Text(r, "small", S.color.muted))
@@ -2087,10 +2091,10 @@ end
 -- Farm's worth -----------------------------------------------------------------------
 
 -- Farm is for gold: its list leads with the profit, what the zone's materials sell for. It
--- also points to zones with a material worth FARM_BETTER_RATIO times more (Farm.Find), among the
--- zones the player's gathering skills reach.
-GatherList.FARM_BETTER_RATIO = 2     -- a better zone's material sells for this many times the best here
-GatherList.FARM_MIN_CHANCE = 25      -- percent: a source this likely counts for a better zone
+-- also names the other zones with the dearest materials (Farm.Find), among the zones the
+-- player's gathering skills reach, whatever those sell for against this zone's. Every row
+-- carries a pin to its material's nearest spot in its zone.
+GatherList.FARM_MIN_CHANCE = 25      -- percent: a source this likely counts for a Best farm zone
 GatherList.FARM_CANDIDATES = 6       -- the most valuable materials looked up for better zones
 GatherList.FARM_SHOW = 3             -- materials and better zones named at most
 GatherList.FARM_HEAD_PROFIT = "Profit"
@@ -2135,6 +2139,7 @@ function GatherList.FarmGoods(zone, items, skills)
         if item and item > 0 and not seen[item] then
             seen[item] = true
             local value, tag, stale, age = GatherList.SalePrice(item)
+            if not value then CP.ItemName(item) end
             out[#out + 1] = { item = item, value = value, tag = tag, stale = stale, age = age }
         end
     end
@@ -2160,18 +2165,21 @@ function GatherList.FarmGoods(zone, items, skills)
     return out
 end
 
--- Zones with a material worth FARM_BETTER_RATIO times `best` that the player's skills reach:
--- { { text = "Zone (Material)", zone, item, info = "45s ea (AH)" } }, at most FARM_SHOW, the most
--- valuable first. The second value is true while a search still runs (Farm.FOUND then rebuilds
--- the list). The third is the oldest auction price used, in seconds, or nil.
-function GatherList.FarmBetter(zone, best)
+-- The other zones with the dearest materials the player's skills reach:
+-- { { text = "Zone (Material)", zone, item, zoneID, itemID, info = "45s ea (AH)" } }, at most
+-- FARM_SHOW, the most valuable first, `zone` left out. The second value is true while a search
+-- still runs (Farm.FOUND then rebuilds the list). The third is the oldest auction price used, in
+-- seconds, or nil. A material whose item data has not loaded yet is asked for; its arrival
+-- rebuilds the list with its vendor price.
+function GatherList.FarmBetter(zone)
     local skills, level = Gather.Skills(), Gather.PlayerLevel()
-    local floor = (best or 0) * GatherList.FARM_BETTER_RATIO
     local cand = {}
     for _, item in ipairs(CP.Farm.Items(skills, level, GatherList.FARM_MIN_CHANCE)) do
         local value, tag, _, age = GatherList.SalePrice(item)
-        if value and value > 0 and value >= floor then
+        if value and value > 0 then
             cand[#cand + 1] = { item = item, value = value, tag = tag, age = age }
+        elseif not value then
+            CP.ItemName(item)
         end
     end
     table.sort(cand, function(a, b)
@@ -2189,6 +2197,7 @@ function GatherList.FarmBetter(zone, best)
             seen[found.zone] = true
             local place, item = zoneName(found.zone), nameOf(c.item)
             out[#out + 1] = { text = ("%s (%s)"):format(place, item), zone = place, item = item,
+                zoneID = found.zone, itemID = c.item,
                 info = GatherList.FARM_EACH:format(CP.Pricing.Format(c.value), c.tag) }
             old = older(old, c.age)
         end
@@ -2206,14 +2215,46 @@ function GatherList.ZoneHas(zone)
     return #parts > 0 and table.concat(parts, " · ") or nil
 end
 
+-- A Profit or Best farm row's pin and click: a waypoint to the nearest spot for `item` in
+-- `zone` (Farm.Nearest), or chat says why there is none.
+function GatherList.FarmNav(item, zone)
+    return function()
+        local place, why = CP.Farm.Nearest(item, { zone = zone })
+        if not place then return CP:Print(GatherList.FarmNavWhy(why, zone)) end
+        placeAt(zone, place.x, place.y, CP.GuideTab.NAV_LABEL:format(nameOf(item), place.name))
+    end
+end
+
+-- Why Farm.Nearest found no spot for a row in `zone`: its `why`.
+GatherList.FARM_NAV_NONE = "No spot in %s has enough of it for you."
+function GatherList.FarmNavWhy(why, zone)
+    if why and why.kind == "none" then return GatherList.FARM_NAV_NONE:format(zoneName(zone)) end
+    return CP.GuideTab.NavWhy(why)
+end
+
+-- `tip` (a row's own tooltip lines, or nil) and where the row's pin goes, or why it goes nowhere.
+-- `nav` is { item, zone }.
+function GatherList.FarmNavTip(nav, tip)
+    local out = {}
+    for _, t in ipairs(tip or {}) do out[#out + 1] = t end
+    local place, why = CP.Farm.Nearest(nav.item, { zone = nav.zone })
+    if place then
+        out[#out + 1] = CP.GuideTab.NavText(place, nav.item)
+        out[#out + 1] = CP.GuideTab.NAV_CLICK
+    else
+        out[#out + 1] = GatherList.FarmNavWhy(why, nav.zone)
+    end
+    return out
+end
+
 -- The lines Farm leads with in `zone`: the Profit section, in every outdoor zone. It lists the
--- zone's dearest goods, or FARM_NONE when the skills gather nothing here to sell, then the better
--- zones to farm. With no price for any good here, every priced material elsewhere counts as better.
+-- zone's dearest goods, or FARM_NONE when the skills gather nothing here to sell, then the
+-- other zones with the dearest materials (FarmBetter). Each row's pin goes to its material's
+-- nearest spot in its zone (FarmNav).
 function GatherList.WorthLines(zone, items, skills)
     if not zone or Gather.IsInstance(zone) then return {} end
     local goods = GatherList.FarmGoods(zone, items, skills)
-    local best = goods[1] and goods[1].value or 0
-    local better, waiting, old = GatherList.FarmBetter(zone, best)
+    local better, waiting, old = GatherList.FarmBetter(zone)
     local oldest = old
     for i = 1, math.min(#goods, GatherList.FARM_SHOW) do oldest = older(oldest, goods[i].age) end
     local stale = oldest and oldest > GatherList.FARM_STALE_AGE
@@ -2229,8 +2270,9 @@ function GatherList.WorthLines(zone, items, skills)
     end
     for i = 1, math.min(#goods, GatherList.FARM_SHOW) do
         local g = goods[i]
+        local nav = GatherList.FarmNav(g.item, zone)
         out[#out + 1] = { kind = "plan", indent = 30, textColor = S.color.text, itemID = g.item,
-            text = iconText(g.item, nameOf(g.item)),
+            text = iconText(g.item, nameOf(g.item)), pin = nav, click = nav, nav = { item = g.item, zone = zone },
             info = g.value and GatherList.FARM_EACH:format(CP.Pricing.Format(g.value), g.tag)
                 or GatherList.FARM_NO_PRICE }
     end
@@ -2240,7 +2282,9 @@ function GatherList.WorthLines(zone, items, skills)
         -- Each row stays one line: the wrap fits its text to the room left of the price (FarmFit).
         local lead
         for i, b in ipairs(better) do
-            out[#out + 1] = { kind = "plan", indent = 30, spotOf = lead,
+            local nav = GatherList.FarmNav(b.itemID, b.zoneID)
+            out[#out + 1] = { kind = "plan", indent = 30, spotOf = lead, pin = nav, click = nav,
+                nav = { item = b.itemID, zone = b.zoneID },
                 fit = { zone = b.zone, item = b.item, lead = i == 1 },
                 text = i == 1 and GatherList.FARM_BETTER:format(b.text) or b.text, info = b.info }
             lead = lead or out[#out]
@@ -2908,10 +2952,12 @@ function GatherList.FarmFit(fit, room)
 end
 
 -- One wrapped `line`: its name split at spaces into `out` beside a short info, a long info
--- on lines of its own below.
+-- on lines of its own below. `room` runs from the name's left to the pin or check (or the
+-- row's edge). The name always ends GAP short of it, since setLine anchors it 6 px left of
+-- the info, and an empty info sits INFO_EDGE in.
 local function wrapLine(out, line, room, info, indent)
     local keepInfo = info > 0 and info <= room * GatherList.INFO_SHARE
-    local nameRoom = keepInfo and room - GAP - info or room
+    local nameRoom = keepInfo and room - GAP - info or room - GAP
     local text = line.text or (line.row and line.row.name) or (line.src and line.src.name)
     if line.count then
         line.showCount = GatherList.Measure(text, "body") + COUNT_GAP + GatherList.Measure(line.count, "small")
@@ -2929,7 +2975,7 @@ local function wrapLine(out, line, room, info, indent)
     if info > 0 and not keepInfo and text then
         local need = GatherList.Measure(line.text or text, "body") + GAP + info
         if need > room or #out > 1 and out[#out].of == line then
-            for _, piece in ipairs(splitWords(line.info, room - 6)) do
+            for _, piece in ipairs(splitWords(line.info, room - 6 - GAP)) do
                 out[#out + 1] = { kind = "cont", text = piece, of = line, indent = indent + 6,
                     color = line.infoColor }
             end
@@ -2949,7 +2995,7 @@ local function wrapAt(list, barShown)
         if line.fit then
             -- One line by construction: the price keeps its column and the text fits beside it.
             local full
-            line.text, full = GatherList.FarmFit(line.fit, info > 0 and room - GAP - info or room)
+            line.text, full = GatherList.FarmFit(line.fit, room - GAP - info)
             line.tip = line.text ~= full and { full } or nil
         else
             wrapLine(out, line, room, info, indent)

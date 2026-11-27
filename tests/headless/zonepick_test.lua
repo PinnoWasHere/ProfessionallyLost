@@ -617,7 +617,7 @@ T.test("Farm in a zone that sells for little shows its profit and points to bett
     World.set(CP.Farm, "Items", function() return { LIGHT, 8170 } end)
     local asked
     World.set(CP.Farm, "Find", function(item)
-        asked = item
+        asked = asked or item
         return { zone = WINTERSPRING, score = 1 }, true
     end)
     GL.Refresh()
@@ -723,14 +723,14 @@ T.test("Farm: cheap leather here and a dearer reachable zone shows Profit and a 
     T.ok(bestLine() and bestLine():find("Winterspring", 1, true), tostring(bestLine()))
 end)
 
-T.test("Farm: nothing reachable beats twice the best here, so Profit and no Best farm line", function()
+T.test("Farm: a reachable zone that sells for little more than here is still named (no price floor)", function()
     owner("farm")
     World.set(CP.Pricing, "SaleValue", function(item) return nil, item == 8170 and 150 or 100 end)
     World.set(CP.Farm, "Items", function() return { LIGHT, 8170 } end)
     World.set(CP.Farm, "Find", function() return { zone = WINTERSPRING, score = 1 }, true end)
     GL.Refresh()
     T.eq(GL.Drawn()[1].text, GL.FARM_HEAD_PROFIT)
-    T.eq(bestLine(), nil, "no better zone")
+    T.ok(bestLine() and bestLine():find("Winterspring", 1, true), "the zone is named: " .. tostring(bestLine()))
 end)
 
 T.test("Farm: a zone the player's skills do not reach is never named", function()

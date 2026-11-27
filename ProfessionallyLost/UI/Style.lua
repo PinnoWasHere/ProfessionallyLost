@@ -594,10 +594,30 @@ function Style.OneLine(fs)
     return fs
 end
 
--- `word` broken into pieces no wider than `room`, a letter at a time.
+-- The escape sequences a piece of text never splits inside: a texture, an atlas, a colour
+-- start and its end.
+local ESCAPES = { "^|T.-|t", "^|A.-|a", "^|c%x%x%x%x%x%x%x%x", "^|r" }
+
+-- `word`'s units: whole escape sequences and single UTF-8 letters.
+local function units(word)
+    local out, i = {}, 1
+    while i <= #word do
+        local unit
+        for _, pat in ipairs(ESCAPES) do
+            unit = word:match(pat, i)
+            if unit then break end
+        end
+        unit = unit or word:match("^[%z\1-\127\194-\244][\128-\191]*", i)
+        out[#out + 1] = unit
+        i = i + #unit
+    end
+    return out
+end
+
+-- `word` broken into pieces no wider than `room`, a letter or escape at a time.
 local function breakWord(word, size, room, pieces, measure)
     local cur = ""
-    for ch in word:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+    for _, ch in ipairs(units(word)) do
         if cur ~= "" and measure(cur .. ch, size) > room then
             pieces[#pieces + 1] = cur
             cur = ch
@@ -608,13 +628,26 @@ local function breakWord(word, size, room, pieces, measure)
     return cur
 end
 
--- `text` split at spaces into lines no wider than `room` in size role `size`. A word
--- wider than `room` alone breaks inside itself. `measure(text, size)` stands in for
--- Style.Measure when given.
+-- `text`'s words: runs of non-space, an inline icon joined to the word after it, so a line
+-- never ends on an icon apart from what it marks.
+local function words(text)
+    local out, icon = {}, nil
+    for word in tostring(text or ""):gmatch("%S+") do
+        if icon then word = icon .. " " .. word end
+        icon = nil
+        if word:match("^|[TA].-|[ta]$") then icon = word else out[#out + 1] = word end
+    end
+    if icon then out[#out + 1] = icon end
+    return out
+end
+
+-- `text` split at spaces into lines no wider than `room` in size role `size`. An inline
+-- icon stays with the word after it. A word wider than `room` alone breaks inside itself,
+-- never inside an escape sequence. `measure(text, size)` stands in for Style.Measure when given.
 function Style.Lines(text, size, room, measure)
     measure = measure or Style.Measure
     local pieces, cur = {}, ""
-    for word in tostring(text or ""):gmatch("%S+") do
+    for _, word in ipairs(words(text)) do
         local try = cur == "" and word or (cur .. " " .. word)
         if measure(try, size) <= room then
             cur = try

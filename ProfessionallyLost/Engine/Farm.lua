@@ -318,13 +318,13 @@ local function placeOf(zone, spot, item)
 end
 
 -- Cloth: the Gathering panel's best cloth spot (Gather.Cloth) of the player's zone, else of
--- the nearest zones. Its `perKill` is the cloth a kill there. With none, why: the lowest level
--- whose bands are safe, else { kind = "none" }.
-local function nearestCloth(item, level, side)
+-- the nearest zones, or of `only` alone when given. Its `perKill` is the cloth a kill there.
+-- With none, why: the lowest level whose bands are safe, else { kind = "none" }.
+local function nearestCloth(item, level, side, only)
     local mine = side == "Alliance" and "A" or side == "Horde" and "H" or nil
     local zones, low = {}, nil
     for zone, z in pairs(CP.GatherData.zones) do
-        local bands = openZone(zone, z, side) and z.cloth and z.cloth[item]
+        local bands = (not only or zone == only) and openZone(zone, z, side) and z.cloth and z.cloth[item]
         if bands then
             zones[#zones + 1] = { zone = zone }
             for _, b in ipairs(bands) do
@@ -367,7 +367,7 @@ end
 -- skill gathers, or cloth droppers (Gather.Cloth), in zones Farm.Best would send them to.
 -- The best spot of their own zone wins; with none there, the nearest spot of the
 -- NEAREST_ZONES nearest zones that have one.
--- `opts` (all optional): skills, level, side. Returns
+-- `opts` (all optional): skills, level, side, and zone, which looks in that zone alone. Returns
 -- { zone, x, y, name, kind = "mob" | "node", low, high, chance or perKill (cloth), prof, spot },
 -- or nil and why: nil when no source suits their professions, else { kind = "level", need, name },
 -- { kind = "skill", prof, need, have, name } or { kind = "none" } (no zone has a spot).
@@ -376,7 +376,7 @@ function Farm.Nearest(item, opts)
     local skills = opts.skills or G.Skills()
     local level = opts.level or G.PlayerLevel()
     local side = opts.side or UnitFactionGroup("player")
-    if G.IsCloth(item) then return nearestCloth(item, level, side) end
+    if G.IsCloth(item) then return nearestCloth(item, level, side, opts.zone) end
     local own = ownSources(item, skills)
     if #own == 0 then return nil, nil end
     local now = {}
@@ -388,7 +388,7 @@ function Farm.Nearest(item, opts)
 
     local zones = {}
     for zone, z in pairs(CP.GatherData.zones) do
-        if openZone(zone, z, side) then
+        if (not opts.zone or zone == opts.zone) and openZone(zone, z, side) then
             local holds = {}
             for _, src in ipairs(now) do
                 if G.Holds(zone, dataKind(src), src.entry) then holds[#holds + 1] = src end
