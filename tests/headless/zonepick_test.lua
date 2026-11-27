@@ -636,6 +636,43 @@ T.test("Farm in a zone that sells for little shows its profit and points to bett
     T.eq(waiting and waiting.wrapped, nil, "one row while it runs")
 end)
 
+T.test("Farm: several Best farm zones light together when one is hovered", function()
+    owner("farm")
+    World.set(CP.Pricing, "SaleValue", function(item) return 5, item == 8170 and 90000 or item == 8171 and 80000 or nil end)
+    World.set(CP.Farm, "Items", function() return { LIGHT, 8170, 8171 } end)
+    World.set(CP.Farm, "Find", function(item)
+        return { zone = item == 8170 and WINTERSPRING or MULGORE, score = 1 }, true
+    end)
+    GL.Refresh()
+    local drawn, rows = GL.Drawn()
+    local first, second
+    for _, l in ipairs(drawn) do
+        if tostring(l.text):find("^Best farm") then first = l end
+    end
+    for i, l in ipairs(drawn) do
+        if l == first then second = drawn[i + 1] end
+    end
+    T.ok(first and second and second.kind == "plan" and second.info, "a second zone row follows the first: " .. tostring(first and first.text) .. " / " .. tostring(second and second.kind) .. " " .. tostring(second and second.text))
+    local lit = {}
+    for _, r in ipairs(rows) do
+        World.set(r, "LockHighlight", function(self) lit[self] = true end)
+        World.set(r, "UnlockHighlight", function(self) lit[self] = nil end)
+    end
+    local hover
+    for _, r in ipairs(rows) do
+        if r:IsShown() and r.line == first then hover = r end
+    end
+    hover:GetScript("OnEnter")(hover)
+    local count, hasSecond = 0, false
+    for r in pairs(lit) do
+        count = count + 1
+        if r.line == second then hasSecond = true end
+    end
+    T.ok(hasSecond, "the second zone row lights with the Best farm row")
+    T.eq(count, 1, "only that row, the hovered one excepted")
+    hover:GetScript("OnLeave")(hover)
+end)
+
 local function bestLine()
     for _, l in ipairs((GL.Drawn())) do
         if tostring(l.text):find("^Best farm") then return l.text end

@@ -2225,9 +2225,12 @@ function GatherList.WorthLines(zone, items, skills)
         return out
     elseif better and #better > 0 then
         -- One row per zone, the lead on the first; the price sits in the info column like a material's.
+        -- Later zones hang off the first (spotOf), so the whole Best farm group lights as one.
+        local lead
         for i, b in ipairs(better) do
-            out[#out + 1] = { kind = "plan", indent = 30,
+            out[#out + 1] = { kind = "plan", indent = 30, spotOf = lead,
                 text = i == 1 and GatherList.FARM_BETTER:format(b.text) or b.text, info = b.info }
+            lead = lead or out[#out]
         end
     elseif waiting then
         out[#out + 1] = { kind = "plan", muted = true, indent = 30,
