@@ -32,12 +32,20 @@ local function scene()
     World.set(W.managed, "mover", false)
     World.set(GP.managed, "mover", false)
     World.onEnd(function()
+        -- The window re-measures in the saved font and size, which World.set restores after this.
+        CP.db.font, CP.db.textScale = "general", 1
         CraftWorld.Close()
         S.ApplyScale()
         S.ApplyFont()
         W.SetFolded(false)
         GP.anchor:ClearAllPoints()
         W.Update()
+        P:Refresh()
+        settle()
+        -- The guide's width need was measured for this test's step; the world ends without
+        -- another refresh, so the next test would start at that width.
+        P.SetNeed("guide", nil)
+        P.ApplyWidth()
     end)
     GP.anchor:ClearAllPoints()
     W.PlaceAnchor()
