@@ -139,7 +139,7 @@ function World.Redraw()
 end
 
 -- The saved data a test's player learns as it plays: footprints, finds, beasts seen skinned.
-World.LEARNED = { "footprints", "finds", "skinSeen" }
+World.LEARNED = { "footprints", "finds", "skinSeen", "windowPoint", "windowAnchorSize" }
 
 -- Each test plays a copy of the character's saved data and of what the player learns, so
 -- the plans, picks and finds it writes end with it.

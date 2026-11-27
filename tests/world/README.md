@@ -48,7 +48,7 @@ Each file's header says what it models and what is a guess.
 - A patch returns `World.PASS` for the harness stub's own answer.
 - `T.stub` on a path a world has patched does nothing until the world ends.
 - `craftworld` swaps `CP.charDB` for an empty table, so a scene starts as a new character.
-- Every `T.test` runs on a copy of `CP.charDB` and of `CP.db` footprints, finds and skinSeen (`World.LEARNED`), so what it writes there ends with it.
+- Every `T.test` runs on a copy of `CP.charDB` and of `CP.db` footprints, finds and skinSeen (`World.LEARNED`), and of the window place (`windowPoint`, `windowAnchorSize`), so what it writes there ends with it.
 - `World.redraw = true` makes `World.finish` call `Window.Update()` once the patches are off, so the windows show as the restored settings say.
 - Each world puts back the shared state its scene writes:
   - `mapworld`: `VendorWatch.current` and `counted`.

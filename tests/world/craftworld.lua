@@ -367,7 +367,11 @@ function CraftWorld.begin(spec)
     if CP.GuideTab then CP.GuideTab.Forget() end
     if CP.Window then CP.Window.ForgetFollow() end
     World.onEnd(function()
-        if S.open then CraftWorld.Close() end
+        if S.open then
+            CraftWorld.Close()
+            -- The debounces the close queued (CP:Later, at most 3 s) run out here, not into the next test.
+            T.advance(4)
+        end
         if CP.Plan then CP.Plan.Invalidate() end
         if CP.GuideTab then CP.GuideTab.Forget() end
         if CP.Window then CP.Window.ForgetFollow() end
