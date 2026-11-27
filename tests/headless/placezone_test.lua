@@ -309,7 +309,7 @@ end
 for _, case in ipairs({ { "Alliance", ELWYNN, "Horde" }, { "Horde", TIRISFAL, "Alliance" } }) do
     local side, home = case[1], case[2]
     T.test(side .. " farming in Eastern Kingdoms: no other zone, no enemy home", function()
-        scene({ zone = home, side = side, level = 30, skill = 200, mode = "farm", others = true },
+        scene({ zone = home, side = side, level = 30, skill = 200, mode = "farm", others = false },
             function()
                 solveAll()
                 T.eq(#RM.Others(), 0, "Farm solves no other zone")

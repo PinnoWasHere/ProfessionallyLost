@@ -240,15 +240,18 @@ end)
 
 -- Farming map -----------------------------------------------------------------------
 
-T.test("farming solves no other zone, with other zones off or on", function()
-    for _, others in ipairs({ false, true }) do
-        scene({ mode = "farm", others = others, level = 30, skill = 200 }, function()
-            solveAll()
-            T.ok(not RM.OthersOn(), "off in farming")
-            T.eq(#RM.Others(), 0, "no zone solved")
-            T.ok(RM.ZonesReport()[1]:find("other zones off", 1, true), RM.ZonesReport()[1])
-        end)
-    end
+T.test("farming follows Other zones: off solves no other zone, on solves them", function()
+    scene({ mode = "farm", others = false, level = 30, skill = 200 }, function()
+        solveAll()
+        T.ok(not RM.OthersOn(), "off")
+        T.eq(#RM.Others(), 0, "no zone solved")
+        T.ok(RM.ZonesReport()[1]:find("other zones off", 1, true), RM.ZonesReport()[1])
+    end)
+    scene({ mode = "farm", others = true, level = 30, skill = 200 }, function()
+        solveAll()
+        T.ok(RM.OthersOn(), "on in farming")
+        T.ok(#RM.Others() >= 5, "zones solved: " .. table.concat(RM.Others(), ","))
+    end)
     scene({ mode = "farm", others = true, level = 30, skill = 200 }, function()
         CP.db.routeMode = nil
         GL.RouteChanged()

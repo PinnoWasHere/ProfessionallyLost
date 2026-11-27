@@ -7,9 +7,10 @@ if CP.stopped then return end
 -- Loops are solved in coroutines, FRAME_MS per frame, so a big zone doesn't stall.
 -- The player's zone shows on the minimap, its zone map and its continent map. With
 -- "Other zones", every other zone on the player's continent is solved after
--- it, at low priority, and drawn dimmed on its zone map and the continent map. Farming
--- is zone-specific: it solves and draws only the player's zone. What is drawn never depends
--- on which map the world map (or a map addon) shows.
+-- it, at low priority, and drawn dimmed on its zone map and the continent map. While the
+-- player plans a picked zone, that zone takes the player's slot and the player's own zone
+-- is one of the others. Farm follows the setting as the guide does. What is drawn never
+-- depends on which map the world map (or a map addon) shows.
 
 local S = CP.Style
 local Route = CP.Route
@@ -360,9 +361,9 @@ local function drawSlot(zone, result, onMinimap, dim)
     end
 end
 
--- Other zones are solved and drawn with "Other zones", never in Farming.
+-- Other zones are solved and drawn with "Other zones", in either route mode.
 local function othersOn()
-    return CP.db.route ~= false and CP.db.mapIcons ~= false and CP.db.otherZones and not CP.Gather.RouteFarming() or false
+    return CP.db.route ~= false and CP.db.mapIcons ~= false and CP.db.otherZones or false
 end
 RouteMap.OthersOn = othersOn
 
@@ -751,8 +752,11 @@ local function solveOthers()
         -- Cluster builds inside each zone's rows (Gather.Farmable) yield through it too.
         CP.Gather.JobTick(light)
         local keep = {}
+
+        -- The listed zone has its own slot. The player's zone does too, unless a picked zone holds it.
+        local away = here.asked and here.asked ~= zone
         for _, z in ipairs(zones) do
-            if z ~= zone and z ~= here.asked and CP.Gather.ZoneSize(z) then
+            if z ~= here.asked and (away or z ~= zone) and CP.Gather.ZoneSize(z) then
                 stats.zones = stats.zones + 1
                 local rows = GL.RouteRows(z, nil, true, GL.OTHER_OPTS)
                 tick()

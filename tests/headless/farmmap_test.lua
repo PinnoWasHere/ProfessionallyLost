@@ -1,7 +1,6 @@
--- Farm is zone-specific on the map too. The zone map, the continent map and the minimap show
--- only the player's zone's grind spots and route, whatever "Other zones" says, and
--- no pass solves the other zones. Follow the guide's map still draws the other zones when the
--- setting is on. The switched-off Nearby zones code is gone.
+-- With "Other zones" off, Farm's zone map, continent map and minimap show only the player's
+-- zone's grind spots and route, and no pass solves the other zones. With it on, Farm follows
+-- the setting as the guide does (farmpins_test). The switched-off Nearby zones code is gone.
 
 local CP = ProfLost
 local RM, W, GL = CP.RouteMap, CP.Waypoint, CP.GatherList
@@ -62,29 +61,27 @@ local function draw()
     end
 end
 
-for _, others in ipairs({ true, false }) do
-    T.test("Farm's map draws only this zone, other zones on the map " .. (others and "on" or "off"), function()
-        scene("farm", others, function(seen)
-            draw()
-            T.ok(CP.Gather.RouteFarming(), "the scene is in Farm")
-            T.eq(#RM.Others(), 0, "no other zone is solved")
-            local spots = 0
-            for _, p in ipairs(seen.world) do
-                if p.spot then
-                    spots = spots + 1
-                    T.eq(p.zone, DUROTAR, "a grind pin belongs to the player's zone")
-                    T.ok(p.map == DUROTAR or p.map == KALIMDOR, "on its own map or the continent, not " .. tostring(p.map))
-                else
-                    T.eq(p.map, DUROTAR, "a route stop sits on the player's zone map")
-                end
+T.test("Farm's map draws only this zone, other zones on the map off", function()
+    scene("farm", false, function(seen)
+        draw()
+        T.ok(CP.Gather.RouteFarming(), "the scene is in Farm")
+        T.eq(#RM.Others(), 0, "no other zone is solved")
+        local spots = 0
+        for _, p in ipairs(seen.world) do
+            if p.spot then
+                spots = spots + 1
+                T.eq(p.zone, DUROTAR, "a grind pin belongs to the player's zone")
+                T.ok(p.map == DUROTAR or p.map == KALIMDOR, "on its own map or the continent, not " .. tostring(p.map))
+            else
+                T.eq(p.map, DUROTAR, "a route stop sits on the player's zone map")
             end
-            T.ok(spots > 0, "the player's zone has grind spots drawn")
-            T.ok(#seen.mini > 0, "the minimap draws the zone")
-            for _, p in ipairs(seen.mini) do T.eq(p.zone, DUROTAR, "a minimap pin is this zone's") end
-            for _, zone in ipairs(seen.lines) do T.eq(zone, DUROTAR, "a route line is this zone's") end
-        end)
+        end
+        T.ok(spots > 0, "the player's zone has grind spots drawn")
+        T.ok(#seen.mini > 0, "the minimap draws the zone")
+        for _, p in ipairs(seen.mini) do T.eq(p.zone, DUROTAR, "a minimap pin is this zone's") end
+        for _, zone in ipairs(seen.lines) do T.eq(zone, DUROTAR, "a route line is this zone's") end
     end)
-end
+end)
 
 T.test("Follow the guide's map still draws the other zones when the setting is on", function()
     scene(nil, true, function(seen)
