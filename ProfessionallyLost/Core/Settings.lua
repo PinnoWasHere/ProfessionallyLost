@@ -3,8 +3,9 @@ if CP.stopped then return end
 
 -- Every setting a player can change, in one list; Daylight UI's options page for
 -- ProfLost is built from it (UI/Plugin.lua). Each entry: `key` in CP.db, `label`,
--- `desc`, `kind` ("toggle", "choice" with `values`, or "slider" with `min`, `max`,
--- `step`), `group` (the heading it sits under) and `apply()` (what changes right away).
+-- `desc`, `kind` ("toggle", "choice" with `values` or a `choices()` giving values and order,
+-- or "slider" with `min`, `max`, `step`), `group` (the heading it sits under) and `apply()`
+-- (what changes right away).
 -- `plans` marks a setting that changes what guides plan: true for every guide, or a set of
 -- the guides' skill lines. The simulator's influence check tries only these as a
 -- profession's coupling switch. `couples` names the profession (skill line) whose coupling
@@ -67,21 +68,20 @@ function Settings.FishCook()
     return CP.db ~= nil and CP.db.fishCook == true and CP.db.collect ~= false
 end
 
--- One switch per price addon (Pricing.config.choices), kept in CP.db.priceSource, not by key.
--- Exactly one is on: turning one on turns the last off, and the one on can't be turned off.
--- A row whose addon isn't installed says so (`missing`, read as the page is built).
-local function priceRow(key, label, desc)
-    return { kind = "toggle", group = "Prices", price = key, label = label, desc = desc,
-             missing = function() return not CP.Pricing.Installed(key) end,
-             shown = function() return CP.Pricing.Selected() == key end,
-             get = function() return CP.Pricing.Selected() == key end,
-             set = function(v)
-                 if v then return CP.Pricing.Choose(key) end
-                 return CP.Pricing.Selected() ~= key
-             end,
-             default = function() return CP.Pricing.Best() == key end,
-             apply = function() end }
-end
+-- The price addon pick, kept in CP.db.priceSource, not by key. Its choices are read each time
+-- the dropdown opens (Pricing.Listed), so an addon switched on later shows up.
+local priceRow = {
+    kind = "choice", group = "Prices",
+    label = "Price Addon",
+    desc = "Whose auction house prices to use. Automatic: the first addon that has prices. "
+        .. "Professionally Lost's Own: its Scan prices button at the auction house. "
+        .. "An item the picked addon has no price for is priced by the others.",
+    choices = function() return CP.Pricing.Listed() end,
+    get = function() return CP.Pricing.Selected() end,
+    set = function(key) return CP.Pricing.Choose(key) end,
+    default = function() return CP.Pricing.config.automatic end,
+    apply = function() end,
+}
 
 -- The options page reads in this order: groups by first appearance, most used first, and a
 -- switch that greys another sits right above it. Labels are four words or fewer. Values are
@@ -204,14 +204,7 @@ Settings.LIST = {
       label = "Bag marks",
       desc = "A profession icon on bag items your guides need, so you don't sell them.",
       apply = function() if CP.NeededMarks then CP.NeededMarks.Refresh() end end },
-    priceRow("tsm", "TSM",
-        "TradeSkillMaster's market value, else its lowest buyout. Its prices come from the TSM desktop app."),
-    priceRow("auctioneer", "Auctioneer", "Auctioneer's market value, from its own scans."),
-    priceRow("auctionator", "Auctionator", "The lowest buyout from Auctionator's last scan that saw the item."),
-    priceRow("daylight", "Daylight UI",
-        "DaylightMogul's market price, or Daylight UI's Auction House while DaylightMogul isn't loaded."),
-    priceRow("glowey", "Glowey's Recipes", "The auction prices Glowey's Recipes uses."),
-    priceRow("scan", "ProfLost's own scan", "Professionally Lost's own full scan, from its button at the auction house."),
+    priceRow,
     { kind = "note", group = "Prices", text = function() return CP.Pricing.ChoiceNote() end },
     -- Jobs Glowey's Recipes does too (Core/Glowey.lua). The rows show only while it is loaded.
     { key = "gloweyGuide", group = "Glowey's Recipes", kind = "toggle",

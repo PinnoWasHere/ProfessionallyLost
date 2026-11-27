@@ -1,19 +1,23 @@
 -- auctioneerworld: MOCK of Auctioneer's public API (AucAdvanced.API), as ProfLost reads it.
--- Interface only; none of its code. Auctioneer is not installed on the owner's client, so
--- nothing here was read from Auctioneer itself.
+-- Interface only; none of its code.
 --
--- Modelled from Glowey's Recipes 3.3.0-beta3 PriceSources.lua, whose header cites Auctioneer
--- 4.0.9's source (folder Auc-Advanced):
+-- Read from Auctioneer 4.0.11 as installed (Auc-Advanced/, its Auc-Stat-* modules):
 --   * [docs] AucAdvanced.API.GetMarketValue(itemLink, serverKey, confidence) -> copper, seen,
---     modules, or nil (CoreAPI.lua:125). It can raise an error (:222, :242).
---   * [docs] A number goes through GetItemInfo (nil until the item is cached), so "item:<id>"
---     is passed. Its server key exists only after the first PLAYER_ENTERING_WORLD.
+--     modules, or nil (CoreAPI.lua:125-151). It can raise an error (:222, :242).
+--   * [docs] "item:<id>" is read as item <id> (CoreAPI.lua:929-955, GetStoreKeyFromLinkB :1163-1167);
+--     a number goes through GetItemInfo first and is nil until the item is cached (:127-128).
+--   * [docs] A nil serverKey is the player's own auction house, set only once Auctioneer is active
+--     after the first PLAYER_ENTERING_WORLD (CoreServers.lua:188, 299-302; CoreMain.lua:719); until
+--     then the answer is nil.
+--   * [docs] AucAdvanced.SendProcessorMessage(msg, ...) tells its modules: "gameactive" once it is
+--     active (CoreMain.lua:722), "scanstats" once a scan's prices are stored (CoreScan.lua:2097),
+--     which can be after the auction house closed. Its callers look it up on AucAdvanced each time.
 -- Guesses:
---   * [guess] A nil serverKey means the player's own auction house.
---   * [guess] It has no public call that starts a scan, and none that says its prices moved.
 --   * [guess] Prices are what the test sets; its statistics modules are not modelled.
 --
 --   AuctioneerWorld.begin({ prices = { [2318] = 42 } })
+--   AuctioneerWorld.begin({ ..., active = false }), then AuctioneerWorld.Message("gameactive")
+--   AuctioneerWorld.Message("scanstats"): a scan's prices are stored
 --   AuctioneerWorld.state.asked: every link asked
 
 AuctioneerWorld = {}
@@ -22,20 +26,29 @@ local S
 
 function AuctioneerWorld.begin(spec)
     spec = spec or {}
-    S = { prices = {}, asked = {} }
+    S = { prices = {}, asked = {}, active = spec.active ~= false, messages = {} }
     AuctioneerWorld.state = S
     for id, copper in pairs(spec.prices or {}) do S.prices[id] = copper end
 
     local API = {}
     function API.GetMarketValue(itemLink)
         S.asked[#S.asked + 1] = itemLink
+        if not S.active then return nil end
         local id = type(itemLink) == "string" and tonumber(itemLink:match("item:(%d+)"))
         if not id then return nil end
         local copper = S.prices[id]
         if not copper then return nil end
-        return copper, 3
+        return copper, 3, 2
     end
 
-    -- [docs] AucAdvanced.API as Glowey's Recipes' notes on Auctioneer 4.0.9 describe it.
-    World.set(_G, "AucAdvanced", { API = API })
+    -- [docs] AucAdvanced with its API table and SendProcessorMessage, as Auctioneer 4.0.11 has them.
+    local auc = { API = API }
+    function auc.SendProcessorMessage(msg) S.messages[#S.messages + 1] = msg end
+    World.set(_G, "AucAdvanced", auc)
+end
+
+-- Auctioneer sends `msg` to its modules, as its own code calls it.
+function AuctioneerWorld.Message(msg, ...)
+    if msg == "gameactive" then S.active = true end
+    AucAdvanced.SendProcessorMessage(msg, ...)
 end

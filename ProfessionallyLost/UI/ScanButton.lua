@@ -107,7 +107,7 @@ function ScanButton.Wants()
         and CP.Pricing.ScanChosen()
 end
 
-local CHANGE_LINE = "Pick which addon in Professionally Lost's settings, under Prices."
+local CHANGE_LINE = "To scan with Professionally Lost, pick Professionally Lost's Own in its settings, under Prices."
 
 -- The tooltip for another addon's scan.
 local function otherTooltip(mode, key)
