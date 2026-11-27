@@ -55,6 +55,8 @@ local function sourceLine()
     World.onEnd(function()
         W.opened = false
         W.Update()
+        -- The craft window's events queue a route update that waits out its quiet time.
+        T.advance(CP.GatherList.ROUTE_MOST + 1)
     end)
     W.Update()
     T.advance(0.1)

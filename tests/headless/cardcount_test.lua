@@ -24,11 +24,18 @@ local function scene()
     World.set(CP.charDB, "guideMode", "all")
     World.set(W.managed, "mover", false)
     World.onEnd(function()
+        -- The window re-measures in the saved font and size, which World.set restores after this.
+        CP.db.font, CP.db.textScale = "general", 1
         CraftWorld.Close()
         S.ApplyScale()
         S.ApplyFont()
         W.SetMode("one")
         W.Update()
+        P:Refresh()
+        settle()
+        -- The guide's width need was measured for this test's step; the next test would start at it.
+        P.SetNeed("guide", nil)
+        P.ApplyWidth()
     end)
     S.ApplyScale()
     S.ApplyFont()

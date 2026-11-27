@@ -163,6 +163,8 @@ local function ahOpen()
     World.onEnd(function()
         Scan.Stop()
         if panelShown then CP.Panel.frame:Show() end
+        -- The list's route update waits out its quiet time; let it run before the world ends.
+        T.advance(CP.GatherList.ROUTE_MOST + 1)
     end)
     T.advance(1)
     AHWorld.begin({ listings = {}, now = NOW })
