@@ -85,7 +85,10 @@ function Plugin.Pages(API)
                 end
                 local row = { type = "toggle", key = s.key, label = s.label, desc = s.desc,
                               disabled = s.disabled, hidden = hidden }
-                if s.shown or s.disabled then
+                if not s.key then
+                    -- A switch without a key keeps its value elsewhere (Options/Registry.lua Validate).
+                    row.get, row.set, row.default = s.get, s.set, s.default
+                elseif s.shown or s.disabled then
                     -- The switch draws Settings.Shown(s), off while the row is greyed (Options.Get
                     -- reads item.get); a click still saves through Daylight UI's own setter, and
                     -- its default is ProfLost's.

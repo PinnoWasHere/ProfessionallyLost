@@ -11,7 +11,8 @@ if CP.stopped then return end
 -- profession's coupling switch. `couples` names the profession (skill line) whose coupling
 -- the setting switches, and `affects(guideKey)` (optional) says whether it can change that
 -- guide; the guide window's header offers it as "with <profession>" (Settings.Switches).
--- `disabled(get)` dims a row and ignores its clicks; a greyed toggle draws off (Settings.Shown).
+-- `disabled(get)` dims a row and ignores its clicks; a greyed toggle draws off (Settings.Shown),
+-- except a toggle without a key, which always draws its own `get()`.
 -- `shown()` (toggles) overrides the position the switch draws. `when()` (toggles and buttons)
 -- lists the row only while true; `confirm` (buttons) asks for a second click. A row
 -- without a key stores its value elsewhere through `get()`, `set(v)` and `default()`.
@@ -82,6 +83,19 @@ local priceRow = {
     default = function() return CP.Pricing.config.automatic end,
     apply = function() end,
 }
+
+-- One of Glowey's Recipes' six hand-off switches (Core/Glowey.lua), with its label. The row keeps
+-- no value of ProfLost's own: it reads and writes Glowey's Recipes' saved switch, so both pages
+-- show the same. A job that follows the guide greys while Leveling guide is off, as on its page.
+local function gloweyRow(job, label, desc)
+    return { kind = "toggle", group = "Glowey's Recipes", label = label, desc = desc,
+             when = function() return CP.Glowey.Loaded() end,
+             disabled = function() return CP.Glowey.Idle(job) end,
+             get = function() return CP.Glowey.Ours(job) end,
+             set = function(v) return CP.Glowey.Set(job, v) end,
+             default = function() return false end,
+             apply = function() end }
+end
 
 -- The options page reads in this order: groups by first appearance, most used first, and a
 -- switch that greys another sits right above it. Labels are four words or fewer. Values are
@@ -206,29 +220,24 @@ Settings.LIST = {
       apply = function() if CP.NeededMarks then CP.NeededMarks.Refresh() end end },
     priceRow,
     { kind = "note", group = "Prices", text = function() return CP.Pricing.ChoiceNote() end },
-    -- Jobs Glowey's Recipes does too (Core/Glowey.lua). The rows show only while it is loaded.
-    { key = "gloweyGuide", group = "Glowey's Recipes", kind = "toggle",
-      label = "Leveling guide",
-      desc = "Leave the leveling guide to Glowey's Recipes. The guide window, and a Gathering window attached to it, "
-          .. "stay shut until you open them, and the profession window's recipes lose their step marks. "
-          .. "Greyed out while Glowey's Recipes leaves its Leveling Guide to Professionally Lost.",
-      when = function() return CP.Glowey.Loaded() end,
-      disabled = function() return CP.Glowey.Defers("guide") end,
-      apply = function() CP.Glowey.Apply("guide") end },
-    { key = "gloweyBuy", group = "Glowey's Recipes", kind = "toggle",
-      label = "Buy for guide button",
-      desc = "Leave buying at vendors to Glowey's Recipes, so the Buy for guide button stays off the vendor's window. "
-          .. "Greyed out while Glowey's Recipes leaves its Buy Lists to Professionally Lost.",
-      when = function() return CP.Glowey.Loaded() end,
-      disabled = function() return CP.Glowey.Defers("buy") end,
-      apply = function() CP.Glowey.Apply("buy") end },
-    { key = "gloweyTips", group = "Glowey's Recipes", kind = "toggle",
-      label = "Item tooltip lines",
-      desc = "Leave the guides' needs in item tooltips to Glowey's Recipes, so Professionally Lost adds no lines there. "
-          .. "Greyed out while Glowey's Recipes leaves its guide line to Professionally Lost or has its item tooltips off.",
-      when = function() return CP.Glowey.Loaded() end,
-      disabled = function() return CP.Glowey.Defers("tooltip") end,
-      apply = function() CP.Glowey.Apply("tooltip") end },
+    -- Jobs Glowey's Recipes does too, its six switches in its order. The rows show only while it is loaded.
+    gloweyRow("guide", "Leveling guide",
+        "On: Professionally Lost guides your leveling. Off: Glowey's Recipes' Leveling Guide does, the guide window "
+        .. "stays shut until you open it, and recipes lose their step marks."),
+    gloweyRow("buy", "Buy lists",
+        "On: Professionally Lost's Buy for guide button covers your guide at vendors, and Glowey's Recipes lists only "
+        .. "what your crafting queue needs. Greyed out while Leveling guide is off."),
+    gloweyRow("trainer", "Trainer panel",
+        "On: Professionally Lost's guide names the recipes to train, and Glowey's Recipes' trainer strip shows only "
+        .. "your next rank. Greyed out while Leveling guide is off."),
+    gloweyRow("tooltip", "Guide line in item tooltips",
+        "On: Professionally Lost's item tooltip lines say what your guides need, and Glowey's Recipes drops its own "
+        .. "guide line. Off: Glowey's Recipes' line does it."),
+    gloweyRow("prices", "Scanned prices",
+        "On: Glowey's Recipes also uses the auction prices Professionally Lost scans, so one scan serves both."),
+    gloweyRow("step", "Light up its step",
+        "On: Glowey's Recipes lights the recipe Professionally Lost's guide is on in its recipe list. "
+        .. "Greyed out while Leveling guide is off."),
     { kind = "button", group = "Glowey's Recipes",
       label = "Open Glowey's Recipes", button = "Open",
       desc = "Opens Glowey's Recipes' window.",
@@ -236,12 +245,12 @@ Settings.LIST = {
       apply = function() CP.Glowey.Open() end },
     { kind = "button", group = "Glowey's Recipes",
       label = "Glowey's Recipes settings", button = "Open",
-      desc = "Opens Glowey's Recipes' own options page, where its switches leave jobs to Professionally Lost.",
+      desc = "Opens Glowey's Recipes' own options page, which has these same six switches.",
       when = function() return CP.Glowey.CanOpenSettings() end,
       apply = function() CP.Glowey.OpenSettings() end },
     { kind = "button", group = "Glowey's Recipes",
       label = "Put everything back", button = "Put back", confirm = true,
-      desc = "Turns all three off, so Professionally Lost does every job itself again.",
+      desc = "Turns all six on, so Professionally Lost does every job.",
       when = function() return CP.Glowey.Loaded() end,
       apply = function() CP.Glowey.PutBack() end },
     { kind = "button", group = "Help",
@@ -276,7 +285,8 @@ Settings.GROUP_DESC = {
     ["Guide window"] = "Move it in unlock mode (/dui unlock), or drag its title bar while its lock is open.",
     ["Tooltips and bags"] = "Lines the guides add to the game's tooltips and bags.",
     ["Prices"] = "The game lets one addon scan the auction house at a time. Pick the one Professionally Lost takes prices from; the others fill gaps.",
-    ["Glowey's Recipes"] = "Glowey's Recipes does these jobs too. Switch one on to leave it to Glowey's Recipes.",
+    ["Glowey's Recipes"] = "Glowey's Recipes can do these jobs too, and its options page has the same switches. "
+        .. "On: Professionally Lost does the job.",
     ["Help"] = "Something wrong? A report holds what's needed to find it.",
 }
 
