@@ -619,7 +619,7 @@ end
 -- give no point now or later, so a shut and an open solve of one character share a state.
 local function stateOf(guide, p, learned, opts)
     local parts = { p.skill, p.max, sortedKeys(learned), Plan.HeldKey(guide, true), standingKey(guide),
-                    Prof.SpecKey(guide), Prof.OvertimeRank(), Plan.ReachKey(guide) }
+                    Prof.SpecKey(guide), Prof.OvertimeRank() }
     if opts.credit then
         local items = {}
         for item, n in pairs(opts.deNeeds or {}) do

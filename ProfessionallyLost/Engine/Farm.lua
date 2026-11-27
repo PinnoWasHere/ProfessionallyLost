@@ -276,12 +276,19 @@ end
 -- Skinning counts a creature as its grind spots do (Gather.SkinFloor).
 Farm.REACH_MIN_CHANCE = 5
 
--- Node entry -> the lowest level of the open zones that place it (zone `lvl[1]`, 1 when unknown).
+-- A zone the guide may count on for a gathered material: no instance, skipped zone or starting isle.
+local function reachZone(zone, z)
+    local GG = CP.GatherGuide
+    return not z.inst and not (GG and (GG.SKIP[zone] or GG.START_ONLY[zone]))
+end
+
+-- Node entry -> the lowest level of the zones (reachZone) that place it (zone `lvl[1]`, 1 when
+-- unknown), or nil when none does.
 local function nodeLevel(entry)
     if not nodeLevels then
         nodeLevels = {}
         for zone, z in pairs(CP.GatherData.zones) do
-            if not z.inst then
+            if reachZone(zone, z) then
                 local low = z.lvl and z.lvl[1] or 1
                 for code, id in (rawget(z, "has") or ""):gmatch("(%a)(%d+)") do
                     id = tonumber(id)
@@ -304,7 +311,7 @@ local function fishReach(item, out)
     local D = CP.GatherData
     local function landsAt(base) return base - 4 end
     for zone, z in pairs(D.zones) do
-        if z.fish and not z.inst then
+        if z.fish and reachZone(zone, z) then
             local low = z.lvl and z.lvl[1] or 1
             for _, l in ipairs(D.loot[z.fish.loot] or {}) do
                 if l[1] == item and l[2] >= Farm.REACH_MIN_CHANCE then
@@ -318,7 +325,7 @@ local function fishReach(item, out)
             for _, l in ipairs(D.loot[n[3]] or {}) do
                 if l[1] == item and l[2] >= Farm.REACH_MIN_CHANCE then
                     for zone, z in pairs(D.zones) do
-                        if z.fish and not z.inst and G.Holds(zone, "nodes", entry) then
+                        if z.fish and reachZone(zone, z) and G.Holds(zone, "nodes", entry) then
                             out[#out + 1] = { skill = math.max(1, landsAt(z.fish.base)), level = z.lvl and z.lvl[1] or 1 }
                         end
                     end
@@ -345,8 +352,8 @@ function Farm.Reach(item, line)
             if src.prof == line then
                 if src.kind == "mob" then
                     out[#out + 1] = { skill = src.skill, level = src.minLevel }
-                elseif src.chance >= Farm.REACH_MIN_CHANCE then
-                    out[#out + 1] = { skill = src.skill, level = nodeLevel(src.entry) or 1 }
+                elseif src.chance >= Farm.REACH_MIN_CHANCE and nodeLevel(src.entry) then
+                    out[#out + 1] = { skill = src.skill, level = nodeLevel(src.entry) }
                 end
             end
         end
