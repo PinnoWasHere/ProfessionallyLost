@@ -282,6 +282,30 @@ function Waypoint.MapToWorld(zone, x, y)
     return continent, wx, wy
 end
 
+-- Yards from the player to a point of `zone`'s map. A point on another continent is
+-- Waypoint.ELSEWHERE yards off. Nil when either position is unknown.
+Waypoint.ELSEWHERE = 1e9
+
+function Waypoint.Yards(zone, x, y)
+    local continent, px, py = playerWorld()
+    local c, wx, wy = Waypoint.MapToWorld(zone, x, y)
+    if not continent or not c then return nil end
+    if c ~= continent then return Waypoint.ELSEWHERE end
+    return math.sqrt((wx - px) ^ 2 + (wy - py) ^ 2)
+end
+
+-- The player's spot on `zone`'s map as { x, y }, outside 0 to 1 when they stand beyond it.
+-- Nil on another continent or when the map can't say.
+function Waypoint.PlayerOn(zone)
+    local continent, px, py = playerWorld()
+    if not continent then return nil end
+    local at, pos = C_Map.GetMapPosFromWorldPos(continent, toVector(px, py), zone)
+    if at ~= zone or not pos then return nil end
+    local x, y = pos:GetXY()
+    if not x or not y then return nil end
+    return { x = x, y = y }
+end
+
 -- Zone map to continent map, through the game's own world transforms. Both maps are
 -- axis-aligned on one continent, so the map from one to the other is a scale and an
 -- offset per axis. Each zone's is read once from two points and kept while the map

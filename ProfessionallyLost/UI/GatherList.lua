@@ -1267,6 +1267,7 @@ local function pct(chance)
     if chance >= 10 then return ("%d%%"):format(math.floor(chance + 0.5)) end
     return ("%.1f%%"):format(chance)
 end
+GatherList.Pct = pct   -- "20%", "4.5%": a chance as the panel shows it
 
 -- A source whose chances come from its level, not the data or the player's skins.
 GatherList.ESTIMATED = "estimated"
@@ -2398,11 +2399,7 @@ end
 
 -- How far a zone's middle is from the player, in yards; far away on another continent.
 local function distance(zone)
-    local continent, px, py = CP.Waypoint.PlayerWorld()
-    local c, x, y = CP.Waypoint.MapToWorld(zone, 0.5, 0.5)
-    if not continent or not c then return nil end
-    if c ~= continent then return 1e9 end
-    return math.sqrt((x - px) ^ 2 + (y - py) ^ 2)
+    return CP.Waypoint.Yards(zone, 0.5, 0.5)
 end
 GatherList.Distance = distance
 

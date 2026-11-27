@@ -213,3 +213,193 @@ end
 function Farm.Warming()
     return job ~= nil
 end
+
+-- Nearest place to get an item ------------------------------------------------------
+
+-- With no spot in the player's zone, the nearest this many zones by their middles that hold
+-- a spot are measured, and the nearest of their spots wins.
+Farm.NEAREST_ZONES = 3
+
+-- `item`'s sources the player's professions take at some skill, as the Gathering panel's
+-- sources: { kind = "mob" | "node", entry, name, prof, chance, skill, minLevel?, maxLevel? }.
+-- Creatures count as its grind spots do: a skin at the item's Gather.SkinFloor or better,
+-- other loot by Gather.GrindSource. Cooking's loot drops for anyone, so it needs no skill.
+local function ownSources(item, skills)
+    local D, out = CP.GatherData, {}
+    for _, s in ipairs(sources(item)) do
+        if s.prof == G.COOKING or skills[s.prof] ~= nil then
+            if s.kind == "mobs" then
+                local m = D.mobs[s.entry]
+                local src = m and { kind = "mob", entry = s.entry, name = m[1], minLevel = m[2], maxLevel = m[3],
+                    prof = s.prof, chance = s.chance, skill = s.prof == G.COOKING and 0 or G.CorpseSkill(m[2]) }
+                local fits
+                if s.prof == G.SKINNING then
+                    fits = not G.SKIN_EXCLUDE[item] and s.chance >= G.SkinFloor(item)
+                else
+                    fits = src ~= nil and G.GrindSource(item, src)
+                end
+                if src and fits then out[#out + 1] = src end
+            else
+                local n = D.nodes[s.entry]
+                out[#out + 1] = { kind = "node", entry = s.entry, name = n[1], prof = n[4], chance = s.chance,
+                    skill = math.max(1, n[2] or 1), item = item }
+            end
+        end
+    end
+    return out
+end
+
+-- True when the player can get `item` themselves at some skill and level: a creature drop,
+-- or a source of a gathering profession in `skills` (skill line -> rank).
+function Farm.Gatherable(item, skills)
+    return G.IsCloth(item) or #ownSources(item, skills) > 0
+end
+
+local function dataKind(src) return src.kind == "mob" and "mobs" or "nodes" end
+
+-- Zones a place may be in, as Farm.Best's search takes them: no instance, capital or home
+-- zone of the other faction.
+local function openZone(zone, z, side)
+    return not z.inst and not CP.GatherGuide.SKIP[zone] and not G.EnemyHome(zone, side)
+end
+
+-- The place `placeIn(zone)` finds in the player's zone, else the nearest of the places it
+-- finds in the first NEAREST_ZONES zones of `zones` ({ zone, ... }) that have one, taken
+-- nearest middle first. Nil when none has one.
+local function nearestPlace(zones, placeIn)
+    local here = G.PlayerZone()
+    for _, z in ipairs(zones) do z.d = CP.Waypoint.Yards(z.zone, 0.5, 0.5) or math.huge end
+    table.sort(zones, function(a, b)
+        if (a.zone == here) ~= (b.zone == here) then return a.zone == here end
+        if a.d ~= b.d then return a.d < b.d end
+        return a.zone < b.zone
+    end)
+    local best, bestD, measured = nil, nil, 0
+    for _, z in ipairs(zones) do
+        local place = placeIn(z)
+        if place then
+            if z.zone == here then return place end
+            local d = CP.Waypoint.Yards(z.zone, place.x, place.y) or math.huge
+            if not bestD or d < bestD then best, bestD = place, d end
+            measured = measured + 1
+            if measured >= Farm.NEAREST_ZONES then break end
+        end
+    end
+    return best
+end
+
+-- The Gathering panel's best grind spot or node patch for `list` in `zone`, ranked from the
+-- player's spot when they stand on its continent, or nil.
+local function spotIn(zone, item, list, level)
+    local w, h = G.ZoneSize(zone)
+    if not w then return nil end
+    local row = { itemID = item, need = 1, sources = {} }
+    for _, src in ipairs(list) do
+        if G.Farmable(dataKind(src), src.entry, zone) then row.sources[#row.sources + 1] = src end
+    end
+    if #row.sources == 0 then return nil end
+    local points = CP.Route.Points(zone, { row }, nil, nil, level)
+    return CP.Route.GrindSpots(points, w, h, nil, 1, CP.Waypoint.PlayerOn(zone), zone)[1]
+end
+
+-- A spot as Farm.Nearest returns it. `chance` is the item's chance averaged over the
+-- spot's creatures or nodes, as the panel's drop-chance line shows it.
+local function placeOf(zone, spot, item)
+    local low, high, sum, n = nil, nil, 0, 0
+    for _, a in pairs(spot.about) do
+        n = n + 1
+        sum = sum + (a.drops[item] or 0)
+        if a.minLevel then
+            low, high = math.min(low or a.minLevel, a.minLevel), math.max(high or a.maxLevel, a.maxLevel)
+        end
+    end
+    return { zone = zone, x = spot.x, y = spot.y, name = spot.name, prof = spot.prof, kind = low and "mob" or "node",
+             low = low, high = high, chance = n > 0 and sum / n or 0, spot = spot }
+end
+
+-- Cloth: the Gathering panel's best cloth spot (Gather.Cloth) of the player's zone, else of
+-- the nearest zones. Its `perKill` is the cloth a kill there. With none, why: the lowest level
+-- whose bands are safe, else { kind = "none" }.
+local function nearestCloth(item, level, side)
+    local mine = side == "Alliance" and "A" or side == "Horde" and "H" or nil
+    local zones, low = {}, nil
+    for zone, z in pairs(CP.GatherData.zones) do
+        local bands = openZone(zone, z, side) and z.cloth and z.cloth[item]
+        if bands then
+            zones[#zones + 1] = { zone = zone }
+            for _, b in ipairs(bands) do
+                if b[9] == nil or b[9] == mine then low = math.min(low or b[1], b[1]) end
+            end
+        end
+    end
+    local place = nearestPlace(zones, function(z)
+        local c = G.Cloth(z.zone, item, level, side)
+        local s = c and c.spots[1]
+        return s and { zone = z.zone, x = s.x, y = s.y, name = s.name, kind = "mob", low = s.lo, high = s.hi,
+                       perKill = c.perKill, spot = s }
+    end)
+    if place then return place end
+    if low and not G.ClothSafe(low, level) then
+        return nil, { kind = "level", need = low - G.FARM_SAFE_LEVELS }
+    end
+    return nil, { kind = "none" }
+end
+
+-- Why the player can take none of `own` now: { kind = "level", need, name } when a creature
+-- is too high for their level (the lowest level that reaches one), else
+-- { kind = "skill", prof, need, have, name } (the lowest skill that takes one).
+local function blocked(own, skills)
+    local byLevel, bySkill
+    for _, src in ipairs(own) do
+        local have = skills[src.prof] or 0
+        if src.prof == G.COOKING or have >= src.skill then
+            local need = src.minLevel - G.FARM_SAFE_LEVELS
+            if not byLevel or need < byLevel.need then byLevel = { kind = "level", need = need, name = src.name } end
+        elseif not bySkill or src.skill < bySkill.need then
+            bySkill = { kind = "skill", prof = src.prof, need = src.skill, have = have, name = src.name }
+        end
+    end
+    return byLevel or bySkill
+end
+
+-- The nearest place the player can get `item` now, by the Gathering panel's rules: creatures
+-- at most Gather.FARM_SAFE_LEVELS above their level that they can loot or skin, nodes their
+-- skill gathers, or cloth droppers (Gather.Cloth), in zones Farm.Best would send them to.
+-- The best spot of their own zone wins; with none there, the nearest spot of the
+-- NEAREST_ZONES nearest zones that have one.
+-- `opts` (all optional): skills, level, side. Returns
+-- { zone, x, y, name, kind = "mob" | "node", low, high, chance or perKill (cloth), prof, spot },
+-- or nil and why: nil when no source suits their professions, else { kind = "level", need, name },
+-- { kind = "skill", prof, need, have, name } or { kind = "none" } (no zone has a spot).
+function Farm.Nearest(item, opts)
+    opts = opts or {}
+    local skills = opts.skills or G.Skills()
+    local level = opts.level or G.PlayerLevel()
+    local side = opts.side or UnitFactionGroup("player")
+    if G.IsCloth(item) then return nearestCloth(item, level, side) end
+    local own = ownSources(item, skills)
+    if #own == 0 then return nil, nil end
+    local now = {}
+    for _, src in ipairs(own) do
+        local skillOk = src.prof == G.COOKING or (skills[src.prof] or 0) >= src.skill
+        if skillOk and (src.kind ~= "mob" or src.minLevel <= level + G.FARM_SAFE_LEVELS) then now[#now + 1] = src end
+    end
+    if #now == 0 then return nil, blocked(own, skills) end
+
+    local zones = {}
+    for zone, z in pairs(CP.GatherData.zones) do
+        if openZone(zone, z, side) then
+            local holds = {}
+            for _, src in ipairs(now) do
+                if G.Holds(zone, dataKind(src), src.entry) then holds[#holds + 1] = src end
+            end
+            if #holds > 0 then zones[#zones + 1] = { zone = zone, list = holds } end
+        end
+    end
+    local place = nearestPlace(zones, function(z)
+        local spot = spotIn(z.zone, item, z.list, level)
+        return spot and placeOf(z.zone, spot, item)
+    end)
+    if place then return place end
+    return nil, { kind = "none" }
+end

@@ -22,6 +22,10 @@ CP.GuideTab = { ui = ui }  -- read by other tabs and tests: `ui.rows` holds the 
 
 -- px between a step card material's tag and the have / need count right of it.
 CP.GuideTab.COUNT_GAP = 6
+
+-- px between a material's count and its waypoint pin.
+CP.GuideTab.PIN_GAP = 4
+
 local skill = 0     -- player's skill at the last refresh
 local profID        -- the profession the guide last drew
 
@@ -419,6 +423,80 @@ local function initGatherRow(btn, row)
     btn.info:SetTextColor(unpack(S.color.muted))
 end
 
+-- Material waypoints ----------------------------------------------------------
+
+-- Where a material's pin goes (CP.Farm.Nearest), or why it goes nowhere.
+CP.GuideTab.NAV_MOB = "Level %s %s, %s, %s %s"     -- levels, creature, zone, chance, item
+CP.GuideTab.NAV_NODE = "%s, %s, %s %s"             -- node, zone, chance, item
+CP.GuideTab.NAV_CLOTH = "Level %s %s, %s, %s"      -- levels, creature, zone, cloth a kill
+CP.GuideTab.NAV_CLICK = "Click to set a waypoint there."
+CP.GuideTab.NAV_SKILL = "Needs %s %d for %s. You have %d."
+CP.GuideTab.NAV_LEVEL = "Needs level %d. %s is too high for you yet."
+CP.GuideTab.NAV_LEVEL_ANY = "Needs level %d. Its creatures are too high for you yet."
+CP.GuideTab.NAV_NONE = "No place you can reach has enough of it."
+CP.GuideTab.NAV_LABEL = "%s: %s"                   -- item, creature or node
+
+local function levels(low, high)
+    if not low then return "?" end
+    return low == high and tostring(low) or ("%d-%d"):format(low, high)
+end
+
+-- "Level 34-36 Adolescent Whelp, Swamp of Sorrows, 20% Green Whelp Scale" for a place
+-- Farm.Nearest found for `item`.
+function CP.GuideTab.NavText(place, item)
+    local G, name = CP.GuideTab, CP.ItemName(item) or ("item " .. tostring(item))
+    local zone = zoneName(place.zone)
+    if place.perKill then
+        local rate = place.perKill >= 0.5 and ("about %.1f a kill"):format(place.perKill)
+            or ("about 1 in %d kills"):format(math.max(1, math.floor(1 / place.perKill + 0.5)))
+        return G.NAV_CLOTH:format(levels(place.low, place.high), place.name, zone, rate)
+    end
+    local chance = CP.GatherList.Pct(place.chance)
+    if place.kind == "mob" then
+        return G.NAV_MOB:format(levels(place.low, place.high), place.name, zone, chance, name)
+    end
+    return G.NAV_NODE:format(place.name, zone, chance, name)
+end
+
+-- Why Farm.Nearest found no place: its `why`.
+function CP.GuideTab.NavWhy(why)
+    local G = CP.GuideTab
+    if why and why.kind == "skill" then
+        return G.NAV_SKILL:format(PROF_NAME[why.prof] or "skill", why.need, why.name, why.have)
+    elseif why and why.kind == "level" then
+        return why.name and G.NAV_LEVEL:format(why.need, why.name) or G.NAV_LEVEL_ANY:format(why.need)
+    end
+    return G.NAV_NONE
+end
+
+-- A material pin's click: a waypoint to the nearest place to get `item`, or why there is none
+-- in chat. Returns the place.
+function CP.GuideTab.MaterialWaypoint(item)
+    if not item then return nil end
+    local place, why = CP.Farm.Nearest(item)
+    if not place then
+        CP:Print(CP.GuideTab.NavWhy(why))
+        return nil
+    end
+    local name = CP.ItemName(item) or ("item " .. tostring(item))
+    CP.Waypoint.PlaceOnMap(place.zone, place.x, place.y, CP.GuideTab.NAV_LABEL:format(name, place.name))
+    return place
+end
+
+-- A material pin's hover text: where its click goes, or why it goes nowhere.
+function CP.GuideTab.MaterialTip(owner, item)
+    if not item then return end
+    local place, why = CP.Farm.Nearest(item)
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    if place then
+        GameTooltip:SetText(CP.GuideTab.NavText(place, item), 1, 1, 1, 1, true)
+        GameTooltip:AddLine(CP.GuideTab.NAV_CLICK, nil, nil, nil, true)
+    else
+        GameTooltip:SetText(CP.GuideTab.NavWhy(why), 1, 1, 1, 1, true)
+    end
+    GameTooltip:Show()
+end
+
 -- Details box -----------------------------------------------------------------
 
 -- The step card's material row `i`. The card holds REAGENT_ROWS and grows for a recipe with more.
@@ -457,6 +535,19 @@ local function reagentRow(d, i)
         GameTooltip:Show()
     end)
     r:SetScript("OnLeave", GameTooltip_Hide)
+
+    -- A material the player gets themselves: the pin, and a click on the row, set a waypoint
+    -- to the nearest place to get it. layoutCard keeps a column for the pin.
+    r.pin = S.PinButton(r, function(self) CP.GuideTab.MaterialWaypoint(self:GetParent().nav) end)
+    r.pin:SetPoint("RIGHT")
+    r.pin:HookScript("OnEnter", function(self) CP.GuideTab.MaterialTip(self, self:GetParent().nav) end)
+    r.pin:HookScript("OnLeave", GameTooltip_Hide)
+    r.pin:Hide()
+    r:SetScript("OnMouseUp", function(self, button)
+        if not (self.nav and button == "LeftButton") then return end
+        S.Click()
+        CP.GuideTab.MaterialWaypoint(self.nav)
+    end)
     d.rows[i] = r
     return r
 end
@@ -1138,9 +1229,16 @@ function layoutCard()
         if line:IsShown() then counts[#counts + 1] = line.count:GetText() or "" end
     end
     local countW = S.Widest(counts, "small")
+    -- A material pin on any row keeps a column at the right for every row's pin.
+    local pinW = 0
     for _, line in ipairs(d.rows) do
+        if line:IsShown() and line.nav then pinW = S.PIN + CP.GuideTab.PIN_GAP end
+    end
+    for _, line in ipairs(d.rows) do
+        line.count:ClearAllPoints()
+        line.count:SetPoint("RIGHT", -pinW, 0)
         line.tag:ClearAllPoints()
-        line.tag:SetPoint("RIGHT", -(countW + CP.GuideTab.COUNT_GAP), 0)
+        line.tag:SetPoint("RIGHT", -(countW + CP.GuideTab.COUNT_GAP + pinW), 0)
     end
     for _, line in ipairs(d.rows) do
         if line:IsShown() then
@@ -1239,6 +1337,10 @@ end
 
 local function fillDetails(row)
     ui.details.pin.gatherRow = nil
+    for _, line in ipairs(ui.details.rows) do
+        line.nav = nil
+        line.pin:Hide()
+    end
     if isGatherRow(row) then return fillGatherDetails(row) end
     setCraftShown(true)
     if row.rank or row.train then return fillStopDetails(row) end
@@ -1293,6 +1395,7 @@ local function fillDetails(row)
     local buyFor = {}
     for _, b in ipairs(topUp) do buyFor[b.itemID] = b.count end
     local fishing, buyNote, deNote
+    local gathers = CP.Gather.Skills()
     for i = #d.rows + 1, #reagents do reagentRow(d, i) end
     for i, line in ipairs(d.rows) do
         local m = reagents[i]
@@ -1303,6 +1406,8 @@ local function fillDetails(row)
                 fishing = { item = m.itemID, name = m.name, short = need - m.held }
             end
             line.itemID = m.itemID
+            line.nav = CP.Farm.Gatherable(m.itemID, gathers) and m.itemID or nil
+            line.pin:SetShown(line.nav ~= nil)
             line.icon:SetTexture(m.icon)
             line.name:SetText(m.name)
             if not C_Item.GetItemNameByID(m.itemID) then watchName(m.itemID) end
