@@ -159,6 +159,7 @@ local function merchant(slots)
     World.set(B, "open", true)
     World.onEnd(function()
         B.open = false
+        B.watch:Hide()
         B.Changed()
     end)
 end

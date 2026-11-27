@@ -435,9 +435,11 @@ local function bound(fs)
     return (r - l) / effective(fs, "GetScale")
 end
 
--- SetWordWrap lasts across scenes, as a string keeps it. One made before the first scene
--- wraps unless Style.Column marked it.
+-- SetWordWrap lasts across scenes, as a string keeps it. The recorder is installed when this
+-- file loads and stays, so a call made in a test with no scene (a pooled row's SetWordWrap(false))
+-- still counts. A string never told wraps unless Style.Column marked it.
 Visual.wrap = setmetatable({}, { __mode = "k" })
+T.stub("FontString:SetWordWrap", function(self, on) Visual.wrap[self] = on and true or false end)
 
 local function wraps(fs)
     local on = Visual.wrap[fs]
@@ -598,7 +600,6 @@ function Visual.begin()
             return path, px, ""
         end)
     end
-    stub("FontString:SetWordWrap", function(self, on) Visual.wrap[self] = on and true or false end)
     stub("FontString:CanWordWrap", function(self) return wraps(self) end)
     stub("FontString:SetMaxLines", function(self, n) M.maxLines[self] = tonumber(n) or 0 end)
     stub("FontString:GetMaxLines", function(self) return M.maxLines[self] or 0 end)
