@@ -1112,6 +1112,7 @@ local function makeRow(i)
     r.count = S.Column(S.Text(r, "small", S.color.muted))
     r.name = S.Text(r, "body")
     r.name:SetWordWrap(false)
+    r.name:SetMaxLines(1)
     r:SetScript("OnClick", rowClick)
     r:SetScript("OnEnter", rowEnter)
     r:SetScript("OnLeave", rowLeave)
@@ -2099,6 +2100,7 @@ GatherList.FARM_AGE_UNIT = 86400     -- seconds in one unit of the stale heading
 GatherList.FARM_HEAD_UNPRICED = "To farm here"
 GatherList.FARM_HAS = "Here: %s"
 GatherList.FARM_BETTER = "Best farm: %s"
+GatherList.FARM_BETTER_SHORT = "Best: %s"   -- the Best farm lead when the full text does not fit
 GatherList.FARM_EACH = "%s ea (%s)"
 GatherList.TAG_AH, GatherList.TAG_VENDOR = "AH", "Vendor"
 GatherList.FARM_NO_PRICE = "no price yet"
@@ -2125,8 +2127,8 @@ end
 
 -- What the player can farm in `zone` with `skills`: { { item, value } }, most valuable first.
 -- `value` is one item's sale (SalePrice), nil when unknown; `tag` says which ("AH" or "Vendor"),
--- `stale` that an auction price is old, `age` its age in seconds. The same goods Farm's sections list: leathers, herbs and ore
--- the skills reach, Cooking's goods, cloth and the fish in `items`.
+-- `stale` that an auction price is old, `age` its age in seconds. The same goods Farm's sections
+-- list: leathers, herbs and ore the skills reach, Cooking's goods, cloth and the fish in `items`.
 function GatherList.FarmGoods(zone, items, skills)
     local seen, out = {}, {}
     local function add(item)
@@ -2239,9 +2241,11 @@ function GatherList.WorthLines(zone, items, skills)
     elseif better and #better > 0 then
         -- One row per zone, the lead on the first; the price sits in the info column like a material's.
         -- Later zones hang off the first (spotOf), so the whole Best farm group lights as one.
+        -- Each row stays one line: the wrap fits its text to the room left of the price (FarmFit).
         local lead
         for i, b in ipairs(better) do
             out[#out + 1] = { kind = "plan", indent = 30, spotOf = lead,
+                fit = { zone = b.zone, item = b.item, lead = i == 1 },
                 text = i == 1 and GatherList.FARM_BETTER:format(b.text) or b.text, info = b.info }
             lead = lead or out[#out]
         end
@@ -2862,9 +2866,85 @@ end
 
 -- Lines for `list` at the list's width. A short info (a count, yards) keeps its
 -- right-aligned spot on the first line and the name breaks at spaces beside it. A long
--- info (a vendor's place) takes a line of its own below the name. Nothing truncates,
--- in any font or size Daylight UI offers.
+-- info (a vendor's place) takes a line of its own below the name. Nothing else truncates,
+-- in any font or size Daylight UI offers. A Best farm row stays one line and shortens its
+-- text to fit beside its price instead (FarmFit); its tooltip shows the full text.
 GatherList.INFO_SHARE = 0.5   -- an info this share of the row or less stays on the first line
+GatherList.ELLIPSIS = "…"     -- ends a cut Best farm zone or material
+
+local function chars(s) return s:gmatch("[%z\1-\127\194-\244][\128-\191]*") end
+
+-- `s` cut to its first `n` characters, then the ellipsis.
+local function cutTo(s, n)
+    local out, i = "", 0
+    for ch in chars(s) do
+        if i >= n then break end
+        out, i = out .. ch, i + 1
+    end
+    return out:gsub("%s+$", "") .. GatherList.ELLIPSIS
+end
+
+local function charCount(s)
+    local n = 0
+    for _ in chars(s) do n = n + 1 end
+    return n
+end
+
+-- A Best farm row's text for `room` px in the live font, and its full text. `fit` is
+-- { zone, item, lead }. The first form that fits wins: the full text, then the lead's short
+-- "Best:", then the material cut a character at a time and at last dropped, then the zone cut.
+-- The shortest form stands when none fits, and the row's bound clips it.
+function GatherList.FarmFit(fit, room)
+    local function fits(t) return GatherList.Measure(t, "body") <= room end
+    local function form(head, zone, item)
+        return head:format(item and ("%s (%s)"):format(zone, item) or zone)
+    end
+    local full = form(fit.lead and GatherList.FARM_BETTER or "%s", fit.zone, fit.item)
+    if fits(full) then return full, full end
+    local head = fit.lead and GatherList.FARM_BETTER_SHORT or "%s"
+    local text = form(head, fit.zone, fit.item)
+    if fits(text) then return text, full end
+    for n = charCount(fit.item) - 1, 0, -1 do
+        text = form(head, fit.zone, n > 0 and cutTo(fit.item, n) or nil)
+        if fits(text) then return text, full end
+    end
+    for n = charCount(fit.zone) - 1, 1, -1 do
+        text = form(head, cutTo(fit.zone, n))
+        if fits(text) then return text, full end
+    end
+    return text, full
+end
+
+-- One wrapped `line`: its name split at spaces into `out` beside a short info, a long info
+-- on lines of its own below.
+local function wrapLine(out, line, room, info, indent)
+    local keepInfo = info > 0 and info <= room * GatherList.INFO_SHARE
+    local nameRoom = keepInfo and room - GAP - info or room
+    local text = line.text or (line.row and line.row.name) or (line.src and line.src.name)
+    if line.count then
+        line.showCount = GatherList.Measure(text, "body") + COUNT_GAP + GatherList.Measure(line.count, "small")
+            <= nameRoom
+    end
+    if text and line.kind ~= "cont" and GatherList.Measure(text, "body") > nameRoom then
+        local pieces = splitWords(text, nameRoom)
+        if #pieces > 1 then
+            line.text = pieces[1]
+            for i = 2, #pieces do
+                out[#out + 1] = { kind = "cont", text = pieces[i], of = line, indent = indent, color = nameColor(line) }
+            end
+        end
+    end
+    if info > 0 and not keepInfo and text then
+        local need = GatherList.Measure(line.text or text, "body") + GAP + info
+        if need > room or #out > 1 and out[#out].of == line then
+            for _, piece in ipairs(splitWords(line.info, room - 6)) do
+                out[#out + 1] = { kind = "cont", text = piece, of = line, indent = indent + 6,
+                    color = line.infoColor }
+            end
+            line.wrapped = true
+        end
+    end
+end
 
 local function wrapAt(list, barShown)
     local out, width = {}, rowWidth(barShown)
@@ -2874,31 +2954,13 @@ local function wrapAt(list, barShown)
         local done = line.kind == "item" and line.row and line.row.done
         local room = width - indent - (line.pin and PIN_W or done and CHECK_W or 0)
         local info = line.info and line.info ~= "" and GatherList.Measure(line.info, "small") or 0
-        local keepInfo = info > 0 and info <= room * GatherList.INFO_SHARE
-        local nameRoom = keepInfo and room - GAP - info or room
-        local text = line.text or (line.row and line.row.name) or (line.src and line.src.name)
-        if line.count then
-            line.showCount = GatherList.Measure(text, "body") + COUNT_GAP + GatherList.Measure(line.count, "small")
-                <= nameRoom
-        end
-        if text and line.kind ~= "cont" and GatherList.Measure(text, "body") > nameRoom then
-            local pieces = splitWords(text, nameRoom)
-            if #pieces > 1 then
-                line.text = pieces[1]
-                for i = 2, #pieces do
-                    out[#out + 1] = { kind = "cont", text = pieces[i], of = line, indent = indent, color = nameColor(line) }
-                end
-            end
-        end
-        if info > 0 and not keepInfo and text then
-            local need = GatherList.Measure(line.text or text, "body") + GAP + info
-            if need > room or #out > 1 and out[#out].of == line then
-                for _, piece in ipairs(splitWords(line.info, room - 6)) do
-                    out[#out + 1] = { kind = "cont", text = piece, of = line, indent = indent + 6,
-                        color = line.infoColor }
-                end
-                line.wrapped = true
-            end
+        if line.fit then
+            -- One line by construction: the price keeps its column and the text fits beside it.
+            local full
+            line.text, full = GatherList.FarmFit(line.fit, info > 0 and room - GAP - info or room)
+            line.tip = line.text ~= full and { full } or nil
+        else
+            wrapLine(out, line, room, info, indent)
         end
     end
     return out
