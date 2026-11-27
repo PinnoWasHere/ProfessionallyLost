@@ -76,13 +76,24 @@ function Farm.Generation() return generation end
 
 local OTHER_CONTINENT = 0.4   -- a zone across the sea: the boat or zeppelin costs more than half
 
+-- True while the player stands on a starting isle (GatherGuide.START_ONLY).
+local function onStart()
+    local here = G.PlayerZone()
+    return here ~= nil and CP.GatherGuide.START_ONLY[here] ~= nil
+end
+
+-- True when `zone` is a starting isle the player is not on: only a player standing there gets it.
+local function startShut(zone)
+    return CP.GatherGuide.START_ONLY[zone] ~= nil and not onStart()
+end
+
 local function keyOf(item, opts)
     local level, skills = opts.level or 1, opts.skills or {}
     local ranks = {}
     for line, rank in pairs(skills) do ranks[#ranks + 1] = line .. "=" .. rank end
     table.sort(ranks)
     return item .. ":" .. level .. ":" .. tostring(opts.side) .. ":" .. tostring(opts.continent) .. ":"
-        .. table.concat(ranks, ",")
+        .. tostring(onStart()) .. ":" .. table.concat(ranks, ",")
 end
 
 -- Every item the player can farm somewhere with `skills`: a source they can take that gives
@@ -118,7 +129,7 @@ local function search(item, opts, tick)
     local best
     for zone, z in pairs(#list > 0 and D.zones or {}) do
         if not z.inst and not CP.GatherGuide.SKIP[zone] and not G.EnemyHome(zone, opts.side)
-            and not (z.lvl and z.lvl[1] > level + SAFE_LEVELS) then
+            and not startShut(zone) and not (z.lvl and z.lvl[1] > level + SAFE_LEVELS) then
             local score = 0
             for _, src in ipairs(list) do
                 if G.Holds(zone, src.kind, src.entry) and G.Farmable(src.kind, src.entry, zone) then
@@ -356,10 +367,10 @@ end
 
 local function dataKind(src) return src.kind == "mob" and "mobs" or "nodes" end
 
--- Zones a place may be in, as Farm.Best's search takes them: no instance, capital or home
--- zone of the other faction.
+-- Zones a place may be in, as Farm.Best's search takes them: no instance, capital, home
+-- zone of the other faction, or starting isle the player is not on.
 local function openZone(zone, z, side)
-    return not z.inst and not CP.GatherGuide.SKIP[zone] and not G.EnemyHome(zone, side)
+    return not z.inst and not CP.GatherGuide.SKIP[zone] and not G.EnemyHome(zone, side) and not startShut(zone)
 end
 
 -- The place `placeIn(zone)` finds in the player's zone, else the nearest of the places it
@@ -417,13 +428,13 @@ local function placeOf(zone, spot, item)
 end
 
 -- Cloth: the Gathering panel's best cloth spot (Gather.Cloth) of the player's zone, else of
--- the nearest zones. Its `perKill` is the cloth a kill there. With none, why: the lowest level
--- whose bands are safe, else { kind = "none" }.
-local function nearestCloth(item, level, side)
+-- the nearest zones, or of `only` alone when given. Its `perKill` is the cloth a kill there.
+-- With none, why: the lowest level whose bands are safe, else { kind = "none" }.
+local function nearestCloth(item, level, side, only)
     local mine = side == "Alliance" and "A" or side == "Horde" and "H" or nil
     local zones, low = {}, nil
     for zone, z in pairs(CP.GatherData.zones) do
-        local bands = openZone(zone, z, side) and z.cloth and z.cloth[item]
+        local bands = (not only or zone == only) and openZone(zone, z, side) and z.cloth and z.cloth[item]
         if bands then
             zones[#zones + 1] = { zone = zone }
             for _, b in ipairs(bands) do
@@ -466,7 +477,7 @@ end
 -- skill gathers, or cloth droppers (Gather.Cloth), in zones Farm.Best would send them to.
 -- The best spot of their own zone wins; with none there, the nearest spot of the
 -- NEAREST_ZONES nearest zones that have one.
--- `opts` (all optional): skills, level, side. Returns
+-- `opts` (all optional): skills, level, side, and zone, which looks in that zone alone. Returns
 -- { zone, x, y, name, kind = "mob" | "node", low, high, chance or perKill (cloth), prof, spot },
 -- or nil and why: nil when no source suits their professions, else { kind = "level", need, name },
 -- { kind = "skill", prof, need, have, name } or { kind = "none" } (no zone has a spot).
@@ -475,7 +486,7 @@ function Farm.Nearest(item, opts)
     local skills = opts.skills or G.Skills()
     local level = opts.level or G.PlayerLevel()
     local side = opts.side or UnitFactionGroup("player")
-    if G.IsCloth(item) then return nearestCloth(item, level, side) end
+    if G.IsCloth(item) then return nearestCloth(item, level, side, opts.zone) end
     local own = ownSources(item, skills)
     if #own == 0 then return nil, nil end
     local now = {}
@@ -487,7 +498,7 @@ function Farm.Nearest(item, opts)
 
     local zones = {}
     for zone, z in pairs(CP.GatherData.zones) do
-        if openZone(zone, z, side) then
+        if (not opts.zone or zone == opts.zone) and openZone(zone, z, side) then
             local holds = {}
             for _, src in ipairs(now) do
                 if G.Holds(zone, dataKind(src), src.entry) then holds[#holds + 1] = src end
