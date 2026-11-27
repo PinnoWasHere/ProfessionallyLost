@@ -72,13 +72,24 @@ end
 
 local OTHER_CONTINENT = 0.4   -- a zone across the sea: the boat or zeppelin costs more than half
 
+-- True while the player stands on a starting isle (GatherGuide.START_ONLY).
+local function onStart()
+    local here = G.PlayerZone()
+    return here ~= nil and CP.GatherGuide.START_ONLY[here] ~= nil
+end
+
+-- True when `zone` is a starting isle the player is not on: only a player standing there gets it.
+local function startShut(zone)
+    return CP.GatherGuide.START_ONLY[zone] ~= nil and not onStart()
+end
+
 local function keyOf(item, opts)
     local level, skills = opts.level or 1, opts.skills or {}
     local ranks = {}
     for line, rank in pairs(skills) do ranks[#ranks + 1] = line .. "=" .. rank end
     table.sort(ranks)
     return item .. ":" .. level .. ":" .. tostring(opts.side) .. ":" .. tostring(opts.continent) .. ":"
-        .. table.concat(ranks, ",")
+        .. tostring(onStart()) .. ":" .. table.concat(ranks, ",")
 end
 
 -- Every item the player can farm somewhere with `skills`: a source they can take that gives
@@ -114,7 +125,7 @@ local function search(item, opts, tick)
     local best
     for zone, z in pairs(#list > 0 and D.zones or {}) do
         if not z.inst and not CP.GatherGuide.SKIP[zone] and not G.EnemyHome(zone, opts.side)
-            and not (z.lvl and z.lvl[1] > level + SAFE_LEVELS) then
+            and not startShut(zone) and not (z.lvl and z.lvl[1] > level + SAFE_LEVELS) then
             local score = 0
             for _, src in ipairs(list) do
                 if G.Holds(zone, src.kind, src.entry) and G.Farmable(src.kind, src.entry, zone) then
@@ -257,10 +268,10 @@ end
 
 local function dataKind(src) return src.kind == "mob" and "mobs" or "nodes" end
 
--- Zones a place may be in, as Farm.Best's search takes them: no instance, capital or home
--- zone of the other faction.
+-- Zones a place may be in, as Farm.Best's search takes them: no instance, capital, home
+-- zone of the other faction, or starting isle the player is not on.
 local function openZone(zone, z, side)
-    return not z.inst and not CP.GatherGuide.SKIP[zone] and not G.EnemyHome(zone, side)
+    return not z.inst and not CP.GatherGuide.SKIP[zone] and not G.EnemyHome(zone, side) and not startShut(zone)
 end
 
 -- The place `placeIn(zone)` finds in the player's zone, else the nearest of the places it

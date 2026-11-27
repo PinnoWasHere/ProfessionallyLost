@@ -156,6 +156,27 @@ T.test("a candidate whose price has not loaded yet asks the game for it", functi
     T.ok(asked[9005], "the unloaded candidate is requested, so its vendor price arrives")
 end)
 
+-- A starting isle only a character standing in it can reach (GatherGuide.START_ONLY) is never a
+-- Best farm zone for anyone else, nor a nearest spot.
+T.test("a level 6 character in Durotar is never sent to Zephras Isle", function()
+    local ZEPHRAS, DUROTAR, PEACEBLOOM = 2521, 1411, 2447
+    MapWorld.begin({ zone = DUROTAR, x = 0.5, y = 0.5, level = 6, side = "Horde" })
+    World.set(CP.Waypoint, "MapPosZone", function(z) return z end)
+    Farm.Reset()
+    World.onEnd(Farm.Reset)
+    local skills = { [182] = 1, [186] = 1, [SKIN] = 1 }
+    local opts = { level = 6, side = "Horde", skills = skills }
+    local best = Farm.Best(PEACEBLOOM, opts)
+    T.ok(best ~= nil, "Peacebloom has a farm zone")
+    T.ok(best and best.zone ~= ZEPHRAS, "not the starting isle: " .. tostring(best and best.zone))
+    local near = Farm.Nearest(PEACEBLOOM, opts)
+    T.ok(near and near.zone ~= ZEPHRAS, "the nearest spot is not on the isle: " .. tostring(near and near.zone))
+    World.set(G, "PlayerZone", function() return ZEPHRAS end)
+    Farm.Reset()
+    local there = Farm.Nearest(PEACEBLOOM, opts)
+    T.eq(there and there.zone, ZEPHRAS, "standing on the isle, its own spot")
+end)
+
 -- 2. Farm.Nearest in one zone ---------------------------------------------------------------
 
 T.test("Farm.Nearest with a zone finds its spot there, else says none", function()
