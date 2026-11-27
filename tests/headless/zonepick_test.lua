@@ -583,12 +583,24 @@ T.test("Farm leads with what sells here and names no guide need", function()
     local drawn = GL.Drawn()
     T.eq(drawn[1] and drawn[1].text, GL.FARM_HEAD_WORTH, "Sells best here leads")
     T.eq(drawn[2] and drawn[2].itemID, MEDIUM, "the dearest first")
-    T.eq(drawn[2] and drawn[2].info, CP.Pricing.Format(9000) .. " each")
+    T.eq(drawn[2] and drawn[2].info, CP.Pricing.Format(9000) .. " ea (AH)", "an auction price says AH")
     for _, l in ipairs(drawn) do
         local text = (tostring(l.text) .. " " .. tostring(l.info)):lower()
         T.ok(not text:find("guide", 1, true) and not text:find("need", 1, true), "no guide word in Farm: " .. text)
         T.ok(not l.subhead or l.text ~= GL.SKILLUPS_HEAD, "no Skill-ups heading in Farm")
     end
+end)
+
+T.test("Farm: a price from the vendor says Vendor, none says no price yet", function()
+    owner("farm")
+    World.set(CP.Pricing, "SaleValue", function(item) return 100, nil end)
+    GL.Refresh()
+    local drawn = GL.Drawn()
+    T.eq(drawn[2] and drawn[2].info, CP.Pricing.Format(100) .. " ea (Vendor)")
+    World.set(CP.Pricing, "SaleValue", function(item) return nil, nil end)
+    GL.Refresh()
+    drawn = GL.Drawn()
+    T.eq(drawn[2] and drawn[2].info, GL.FARM_NO_PRICE)
 end)
 
 T.test("Farm in a zone that sells for little says so and points to better farm zones", function()
@@ -606,14 +618,16 @@ T.test("Farm in a zone that sells for little says so and points to better farm z
     T.eq(asked, 8170, "the better zone is the dearest material's")
     local better
     for _, l in ipairs(drawn) do
-        if tostring(l.text):find("^Better to farm") then better = l.text end
+        if tostring(l.text):find("^Best farm") then better = l.text end
     end
     T.ok(better and better:find("Winterspring", 1, true), tostring(better))
+    T.ok(better and better:find("^Best farm: Winterspring %(.*%) " .. CP.Pricing.Format(20000) .. " AH$") ~= nil,
+        "location, material, price and source: " .. tostring(better))
     World.set(CP.Farm, "Find", function() return nil, false end)
     GL.Refresh()
     local waiting
     for _, l in ipairs((GL.Drawn())) do
-        if tostring(l.text):find("^Better to farm") then waiting = l.text end
+        if tostring(l.text):find("^Best farm") then waiting = l.text end
     end
     T.eq(waiting, GL.FARM_BETTER:format(CP.GatherGuide.WARM.waiting), "while the search runs")
 end)

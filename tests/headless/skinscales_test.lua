@@ -67,10 +67,14 @@ end
 -- Skinning grind spot heads in the panel, and whether one carries `item` in its drops
 -- and its drop-chance icons.
 local function skinSpots(lines)
-    local out, on = {}, false
+    local out, on, head = {}, false, nil
     for _, l in ipairs(lines) do
         if l.kind == "section" then on = l.key == SKIN
-        elseif on and l.kind == "source" and l.spot then out[#out + 1] = l end
+        elseif on and l.kind == "source" and l.spot then
+            -- `info` stands for the spot's drop chances, which draw on the line under the head.
+            head = { spot = l.spot }
+            out[#out + 1] = head
+        elseif head and l.spotOf and l.text and not l.creature then head.info = l.text end
     end
     return out
 end

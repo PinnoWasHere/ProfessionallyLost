@@ -68,8 +68,7 @@ T.test("Farm: the panel lists the map's grind spots under the map's numbers", fu
             for _, a in pairs(spots[i].about) do low, high = math.min(low, a.minLevel), math.max(high, a.maxLevel) end
             T.eq(l.text, low == high and ("Level %d"):format(low) or ("Level %d-%d"):format(low, high),
                 "the spot's whole level range, no creature name")
-            T.eq(l.info, GL.SpotChances(spots[i]), "the spot's drop chances beside it")
-            T.ok(l.info:find("^|T%d+:0|t %d+%%") ~= nil, "an icon and a chance: " .. l.info)
+            T.eq(l.info, nil, "the chances sit on their own line, not beside the header")
             T.eq(l.tip, nil, "no hover text: the panel holds it")
             T.ok(l.pin ~= nil, "a waypoint")
         end
@@ -145,11 +144,11 @@ T.test("a click opens a grind spot: each creature with its levels and drop chanc
             local out, at = {}, nil
             for _, l in ipairs((GL.Drawn())) do
                 if l.spot == spot then at = l end
-                if at and l.spotOf == at then out[#out + 1] = l end
+                if at and l.spotOf == at and l.creature then out[#out + 1] = l end
             end
             return out
         end
-        T.eq(#under(), 0, "closed: one line, nothing under it")
+        T.eq(#under(), 0, "closed: no creature lines under it")
         hit:GetScript("OnClick")(hit)
         T.ok(GL.SpotOpen(STONETALON, spot), "open")
         local opened = under()
@@ -178,7 +177,7 @@ T.test("a click opens a grind spot: each creature with its levels and drop chanc
             count = count + 1
             T.eq(r.line.spotOf, head.line, "only the spot's own rows")
         end
-        T.eq(count, kinds, "each creature row lights with the hovered first row")
+        T.eq(count, kinds + 1, "the chances line and each creature row light with the hovered first row")
         head:GetScript("OnLeave")(head)
         T.eq(next(lit), nil, "none after the mouse leaves")
 
@@ -235,5 +234,31 @@ T.test("a source row with hover lines shows them", function()
         hit:GetScript("OnEnter")(hit)
         T.eq(shown, hit.line.tip)
         item:GetScript("OnClick")(item)
+    end)
+end)
+
+T.test("Farm: every grind spot shows its drop chances on a second line, whatever their count", function()
+    scene("farm", function()
+        local lines = settled()
+        local spots = RM.Spots()
+        T.ok(#spots > 0, "spots to check")
+        for i, spot in ipairs(spots) do
+            local chances = GL.SpotChances(spot)
+            local at
+            for j, l in ipairs(lines) do
+                if l.spot == spot then at = j end
+            end
+            T.ok(at ~= nil, "spot " .. i .. " is drawn")
+            local head, under = lines[at], lines[at + 1]
+            T.eq(head.info, nil, "spot " .. i .. ": nothing in the right column")
+            T.eq(under and under.text, chances, "spot " .. i .. ": its chances on the next line")
+            T.eq(under and under.spotOf, head, "spot " .. i .. ": that line belongs to the spot")
+            T.eq(under and under.indent, 56, "spot " .. i .. ": indented like a wrapped info")
+            local twice = 0
+            for _, l in ipairs(lines) do
+                if l.spotOf == head and l.text == chances then twice = twice + 1 end
+            end
+            T.eq(twice, 1, "spot " .. i .. ": the chances show once")
+        end
     end)
 end)

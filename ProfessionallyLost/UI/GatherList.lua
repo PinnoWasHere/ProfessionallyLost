@@ -1470,10 +1470,11 @@ function GatherList.SpotOpen(zone, spot)
 end
 
 -- The lines under a grind spot's `head` while it is open: each creature with its
--- levels. With `chances`, a first line shows the spot's drop chances (for a head whose
--- info holds something else). A click on any of them opens or closes the spot, as a
+-- levels. With `chances`, a first line shows the spot's drop chances, always on a line of
+-- its own under the head. A click on any of them opens or closes the spot, as a
 -- click on `head` does.
 local SPOT_INDENT = 52
+local CHANCE_INDENT = 56
 
 function GatherList.SpotDetail(zone, spot, head, chances)
     local key = spotKey(zone, spot)
@@ -1485,7 +1486,7 @@ function GatherList.SpotDetail(zone, spot, head, chances)
     local out = {}
     local gives = chances and GatherList.SpotChances(spot)
     if gives then
-        out[#out + 1] = { kind = "plan", muted = true, indent = SPOT_INDENT, text = gives, spotOf = head,
+        out[#out + 1] = { kind = "plan", muted = true, indent = CHANCE_INDENT, text = gives, spotOf = head,
             click = toggle }
     end
     if not head.fold then return out end
@@ -1514,10 +1515,10 @@ function GatherList.SpotLines(zone)
         out[prof] = out[prof] or {}
         shown[prof] = (shown[prof] or 0) + 1
         local head = { kind = "source", rank = ("#%d"):format(shown[prof]), src = { name = spot.name },
-            text = GatherList.SpotLevels(spot), info = GatherList.SpotChances(spot), spot = spot,
+            text = GatherList.SpotLevels(spot), spot = spot,
             pin = spotPin(zone, spot, ("Grind spot %d: %s"):format(shown[prof], CP.RouteMap.SpotFor(spot))) }
         table.insert(out[prof], head)
-        for _, l in ipairs(GatherList.SpotDetail(zone, spot, head)) do table.insert(out[prof], l) end
+        for _, l in ipairs(GatherList.SpotDetail(zone, spot, head, true)) do table.insert(out[prof], l) end
         sig[#sig + 1] = ("%d:%.4f,%.4f"):format(rank, spot.x, spot.y)
     end
     return out, table.concat(sig, ";")
@@ -2095,12 +2096,14 @@ GatherList.FARM_HEAD_WORTH = "Sells best here"
 GatherList.FARM_HEAD_LITTLE = "Sells for little here"
 GatherList.FARM_HEAD_UNPRICED = "To farm here"
 GatherList.FARM_HAS = "Here: %s"
-GatherList.FARM_BETTER = "Better to farm: %s"
+GatherList.FARM_BETTER = "Best farm: %s"
+GatherList.FARM_EACH = "%s ea (%s)"
+GatherList.TAG_AH, GatherList.TAG_VENDOR = "AH", "Vendor"
 GatherList.FARM_NO_PRICE = "no price yet"
 
 -- What the player can farm in `zone` with `skills`: { { item, value } }, most valuable first.
 -- `value` is one item's sale (Pricing.SaleValue: the auction price after its cut, else the
--- vendor's), nil when unknown. The same goods Farm's sections list: leathers, herbs and ore
+-- vendor's), nil when unknown; `tag` says which ("AH" or "Vendor"). The same goods Farm's sections list: leathers, herbs and ore
 -- the skills reach, Cooking's goods, cloth and the fish in `items`.
 function GatherList.FarmGoods(zone, items, skills)
     local seen, out = {}, {}
@@ -2108,7 +2111,8 @@ function GatherList.FarmGoods(zone, items, skills)
         if item and item > 0 and not seen[item] then
             seen[item] = true
             local vendor, ah = CP.Pricing.SaleValue(item)
-            out[#out + 1] = { item = item, value = ah or vendor }
+            out[#out + 1] = { item = item, value = ah or vendor,
+                              tag = ah and GatherList.TAG_AH or vendor and GatherList.TAG_VENDOR or nil }
         end
     end
     if skills[Gather.SKINNING] then
@@ -2134,7 +2138,7 @@ function GatherList.FarmGoods(zone, items, skills)
 end
 
 -- Zones with a material worth FARM_BETTER_RATIO times `best` (and FARM_WORTH_MIN at least) that
--- the player can farm: { "Zone (Material)" }, at most FARM_SHOW, the most valuable first. True
+-- the player can farm: { "Zone (Material) 45s AH" }, at most FARM_SHOW, the most valuable first. True
 -- second while a search still runs; Farm.FOUND then rebuilds the list.
 function GatherList.FarmBetter(zone, best)
     local skills, level = Gather.Skills(), Gather.PlayerLevel()
@@ -2143,7 +2147,9 @@ function GatherList.FarmBetter(zone, best)
     for _, item in ipairs(CP.Farm.Items(skills, level, GatherList.FARM_MIN_CHANCE)) do
         local vendor, ah = CP.Pricing.SaleValue(item)
         local value = ah or vendor
-        if value and value >= floor then cand[#cand + 1] = { item = item, value = value } end
+        if value and value >= floor then
+            cand[#cand + 1] = { item = item, value = value, tag = ah and GatherList.TAG_AH or GatherList.TAG_VENDOR }
+        end
     end
     table.sort(cand, function(a, b)
         if a.value ~= b.value then return a.value > b.value end
@@ -2158,7 +2164,8 @@ function GatherList.FarmBetter(zone, best)
         if not known then return out, true end
         if found and found.zone ~= zone and not seen[found.zone] then
             seen[found.zone] = true
-            out[#out + 1] = ("%s (%s)"):format(zoneName(found.zone), nameOf(c.item))
+            out[#out + 1] = ("%s (%s) %s %s"):format(zoneName(found.zone), nameOf(c.item),
+                CP.Pricing.Format(c.value), c.tag)
         end
     end
     return out, false
@@ -2196,7 +2203,8 @@ function GatherList.WorthLines(zone, items, skills)
             local g = goods[i]
             out[#out + 1] = { kind = "plan", indent = 30, textColor = S.color.text, itemID = g.item,
                 text = iconText(g.item, nameOf(g.item)),
-                info = g.value and (CP.Pricing.Format(g.value) .. " each") or GatherList.FARM_NO_PRICE }
+                info = g.value and GatherList.FARM_EACH:format(CP.Pricing.Format(g.value), g.tag)
+                    or GatherList.FARM_NO_PRICE }
         end
     end
     if better and #better > 0 then
@@ -2301,7 +2309,7 @@ function GatherList.Lines(items, skills, fishLines)
             out[#out + 1] = { kind = "section", key = key, closed = closed[key],
                 text = ("%s %d"):format(PROF_NAME[key], skills[key] or 0),
                 info = not (split and #rows > 0) and needInfo
-                    or #rows == 0 and own[1] and own[1].spot and "drop chance" or nil }
+                    or nil }
             if not closed[key] then
                 if key == Gather.FISHING then
                     for _, l in ipairs(fishLines or {}) do out[#out + 1] = l end
