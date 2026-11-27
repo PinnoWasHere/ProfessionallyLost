@@ -1,5 +1,5 @@
--- The player picks one auction price addon (Pricing.Choose, saved in CP.db.priceSource): one
--- switch each on the options page, exactly one on; the pick's prices are read first and the
+-- The player picks one auction price addon (Pricing.Choose, saved in CP.db.priceSource) from one
+-- Price Addon dropdown: Automatic, Professionally Lost's Own, then each installed addon; the pick's prices are read first and the
 -- rest fill gaps in Pricing.config.order; the Scan button acts for the pick; and the question
 -- box asks once while no pick is saved (UI/PriceAsk.lua). TSM and Auctioneer are mocks
 -- (tsmworld, auctioneerworld) built from documentation, not from their code.
@@ -28,65 +28,112 @@ local function scanned(prices)
     World.patch("GetServerTime", function() return NOW end)
 end
 
--- The Prices group's rows as Daylight UI's options page gets them, by label.
-local function priceRows()
-    local rows, order = {}, {}
+-- The Prices group's dropdown as Daylight UI's options page gets it.
+local function priceRow()
     for _, g in ipairs(CP.Plugin.Pages()[1].groups) do
         if g.label == "Prices" then
             for _, item in ipairs(g.items) do
-                if item.type == "toggle" then
-                    rows[item.label] = item
-                    order[#order + 1] = item.label
-                end
+                if item.type == "dropdown" then return item end
             end
         end
     end
-    return rows, order
 end
 
-local function onCount(rows)
-    local n, which = 0, nil
-    for label, row in pairs(rows) do
-        if row.get() then n, which = n + 1, label end
-    end
-    return n, which
+-- The dropdown's choices in order: their keys and their words.
+local function listed(row)
+    local values, order = row.choices()
+    local words = {}
+    for i, k in ipairs(order) do words[i] = values[k] end
+    return order, words
 end
 
--- The options switches ---------------------------------------------------------------------
+-- The game lists these addon folders as present and switched on.
+local function installed(set)
+    World.set(C_AddOns, "DoesAddOnExist", function(name) return set[name] == true end)
+    World.set(C_AddOns, "GetAddOnEnableState", function(name) return set[name] and 2 or 0 end)
+end
 
-T.test("one switch per price addon, exactly one on, and turning one on turns the last off", function()
-    local redraws = picks(nil)
+-- The options dropdown ------------------------------------------------------------------------
+
+T.test("one Price Addon dropdown lists Automatic, Professionally Lost's Own, then each installed addon", function()
+    picks(nil)
     scanned({})
     AuctionatorWorld.begin({ prices = { [LIGHT] = 30 } })
-    local rows, order = priceRows()
-    T.eq(order, { "TSM", "Auctioneer", "Auctionator", "Daylight UI", "Glowey's Recipes", "ProfLost's own scan" })
-    T.eq({ onCount(rows) }, { 1, "Auctionator" }, "nothing saved: the best loaded addon shows on")
-
-    T.ok(rows["TSM"].set(true) ~= false, "turning TSM on is taken")
-    T.eq(CP.db.priceSource, "tsm")
-    T.eq({ onCount(rows) }, { 1, "TSM" }, "Auctionator went off")
-    T.ok(redraws() >= 1, "the page redraws so the old switch shows off")
-
-    T.eq(rows["TSM"].set(false), false, "the one on can't be turned off")
-    T.eq(CP.db.priceSource, "tsm")
-    T.ok(rows["Auctionator"].set(false) ~= false, "turning an off switch off changes nothing")
-    T.eq({ onCount(rows) }, { 1, "TSM" })
-
-    rows["ProfLost's own scan"].set(true)
-    T.eq({ onCount(rows) }, { 1, "ProfLost's own scan" })
-    for label, row in pairs(rows) do T.eq(row.disabled, nil, label .. " is never greyed") end
+    installed({ TradeSkillMaster = true })
+    local row = priceRow()
+    T.ok(row ~= nil, "the Prices group has a dropdown")
+    T.eq(row.label, "Price Addon")
+    T.eq(row.key, nil, "kept in CP.db.priceSource through its own get and set")
+    local order, words = listed(row)
+    T.eq(order, { "automatic", "scan", "tsm", "auctionator" })
+    T.eq(words, { "Automatic", "Professionally Lost's Own", "TSM", "Auctionator" })
+    T.eq(row.get(), "automatic", "nothing saved reads Automatic")
+    T.eq(row.default(), "automatic", "its reset goes back to Automatic")
 end)
 
-T.test("a row whose addon isn't installed says so", function()
-    picks("scan")
+T.test("Professionally Lost's Own is listed with no other addon installed and with every one loaded", function()
+    picks(nil)
+    scanned({})
+    installed({})
+    T.eq((listed(priceRow())), { "automatic", "scan" })
     AuctionatorWorld.begin({})
-    World.set(C_AddOns, "DoesAddOnExist", function(name) return name == "TradeSkillMaster" end)
-    World.set(C_AddOns, "GetAddOnEnableState", function(name) return name == "TradeSkillMaster" and 2 or 0 end)
-    local rows = priceRows()
-    T.ok(rows["Auctioneer"].desc:find(CP.Plugin.NOT_INSTALLED, 1, true) ~= nil, rows["Auctioneer"].desc)
-    T.ok(rows["TSM"].desc:find(CP.Plugin.NOT_INSTALLED, 1, true) == nil, "TSM is switched on, not loaded yet")
-    T.ok(rows["Auctionator"].desc:find(CP.Plugin.NOT_INSTALLED, 1, true) == nil, "Auctionator is loaded")
-    T.ok(rows["ProfLost's own scan"].desc:find(CP.Plugin.NOT_INSTALLED, 1, true) == nil)
+    TSMWorld.begin({})
+    AuctioneerWorld.begin({})
+    MogulWorld.begin({})
+    GloweyWorld.begin({})
+    T.eq((listed(priceRow())), { "automatic", "scan", "tsm", "auctioneer", "auctionator", "daylight", "glowey" })
+end)
+
+T.test("picking Professionally Lost's Own over a loaded addon saves it and the Scan button runs ProfLost's scan", function()
+    local redraws = picks("glowey")
+    scanned({ [LIGHT] = { 10, NOW } })
+    GloweyWorld.begin({ prices = { [LIGHT] = 70 }, has = true })
+    local row = priceRow()
+    T.eq(row.get(), "glowey")
+    T.eq(SB.Mode(), "how", "Glowey's Recipes picked: the button says how to scan there")
+    T.ok(row.set("scan") ~= false, "the pick is taken")
+    T.eq(CP.db.priceSource, "scan")
+    T.eq(row.get(), "scan")
+    T.ok(redraws() >= 1, "the page redraws so the note follows")
+    T.eq(Pricing.Active(), "scan")
+    T.eq(select(2, Pricing.AuctionFrom(LIGHT)), "scan", "ProfLost's scan is read first")
+    T.eq(SB.Mode(), "own", "the Scan button runs ProfLost's scan")
+    T.eq(row.set("nothing"), false, "an unknown key is refused")
+    T.eq(CP.db.priceSource, "scan")
+end)
+
+T.test("Automatic is saved, never asks again, and follows the order", function()
+    picks(nil)
+    scanned({ [THREAD] = { 13, NOW } })
+    AuctionatorWorld.begin({ prices = { [LIGHT] = 30, [2589] = 20 } })
+    TSMWorld.begin({ market = { [LIGHT] = 20 } })
+    local row = priceRow()
+    row.set("tsm")
+    T.ok(row.set("automatic") ~= false)
+    T.eq(CP.db.priceSource, "automatic", "Automatic is a saved answer")
+    T.eq(row.get(), "automatic")
+    T.eq(Pricing.Active(), nil, "no pick is read first")
+    T.eq(Pricing.FellBack(), nil)
+    T.eq(select(2, Pricing.AuctionFrom(LIGHT)), "auctionator", "the order decides: Auctionator ahead of TSM")
+    T.eq(select(2, Pricing.AuctionFrom(THREAD)), "scan")
+    T.eq(CP.PriceAsk.Due(), false, "the one-time question is answered")
+    T.ok(Pricing.ChoiceNote():find("Automatic", 1, true) ~= nil, Pricing.ChoiceNote())
+    T.ok(Pricing.ChoiceNote():find("Auctionator", 1, true) ~= nil, Pricing.ChoiceNote())
+end)
+
+T.test("a pick saved before the dropdown carries over unchanged", function()
+    picks("auctioneer")
+    scanned({})
+    installed({})
+    local row = priceRow()
+    T.eq(row.get(), "auctioneer", "the saved pick shows")
+    T.eq(CP.db.priceSource, "auctioneer", "nothing is rewritten")
+    local order, words = listed(row)
+    T.eq(order, { "automatic", "scan", "auctioneer" }, "a saved pick whose addon is gone stays listed")
+    T.eq(words[3], "Auctioneer (not installed)")
+    T.eq(Pricing.FellBack(), "Auctioneer")
+    World.set(CP.db, "priceSource", "nonsense")
+    T.eq(row.get(), "automatic", "an unknown saved value reads Automatic")
 end)
 
 -- The order ---------------------------------------------------------------------------------
@@ -164,6 +211,42 @@ T.test("Auctioneer's prices count as new when the auction house closes", functio
     World.set(CP.Plan, "Invalidate", function() n = n + 1 end)
     T.fire("AUCTION_HOUSE_CLOSED")
     T.eq(n, 1)
+end)
+
+T.test("TSM's prices, loaded in its own login handler, count as new once login ends", function()
+    picks("tsm")
+    scanned({})
+    TSMWorld.begin({ market = { [LIGHT] = 20 }, login = false })
+    local n = 0
+    World.set(CP.Plan, "Invalidate", function() n = n + 1 end)
+    Pricing.Listen()
+    T.eq(Pricing.Auction(LIGHT), nil, "no data before TSM's login handler")
+    TSMWorld.Login()
+    T.eq(n, 0, "nothing yet: login is still going on")
+    T.advance(0.1)
+    T.eq(n, 1, "prices count as new once")
+    T.eq(Pricing.Auction(LIGHT), 20)
+end)
+
+T.test("Auctioneer's prices count as new when it turns active and when a scan's prices are stored", function()
+    picks("auctioneer")
+    scanned({})
+    AuctioneerWorld.begin({ prices = { [LIGHT] = 25 }, active = false })
+    local n = 0
+    World.set(CP.Plan, "Invalidate", function() n = n + 1 end)
+    Pricing.Listen()
+    T.eq(Pricing.Auction(LIGHT), nil, "no server key before it is active")
+    AuctioneerWorld.Message("gameactive")
+    T.eq(n, 1, "active: its prices are readable")
+    T.eq(Pricing.Auction(LIGHT), 25)
+    AuctioneerWorld.Message("scanprogress")
+    T.eq(n, 1, "progress is not new prices")
+    AuctioneerWorld.Message("scanstats")
+    T.eq(n, 2, "a stored scan is")
+    T.eq(AuctioneerWorld.state.messages, { "gameactive", "scanprogress", "scanstats" }, "its modules still hear every message")
+    Pricing.Listen()
+    AuctioneerWorld.Message("scanstats")
+    T.eq(n, 3, "listening again hooks once")
 end)
 
 -- The Scan button -------------------------------------------------------------------------------
@@ -271,7 +354,7 @@ T.test("with no pick saved, one question lists the loaded addons and ProfLost, t
     T.eq(spec.title, "Auction prices")
     T.eq(spec.no, false, "one button")
     local labels, on, chips = lit(spec)
-    T.eq(labels, { "Auctionator", "Daylight UI", "ProfLost's own scan" }, "loaded addons and ProfLost, in the options' order")
+    T.eq(labels, { "Auctionator", "Daylight UI", "Professionally Lost's Own" }, "loaded addons and ProfLost, in the options' order")
     T.eq(on, "Daylight UI", "the best by today's order")
     chips[1]:GetScript("OnClick")(chips[1])
     T.eq(select(2, lit(spec)), "Auctionator", "a click lights another")

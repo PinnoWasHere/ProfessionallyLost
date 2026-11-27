@@ -5,13 +5,13 @@ if CP.stopped then return end
 -- auction price, then the item's vendor list price as a rough estimate.
 --
 -- The game lets one addon scan the auction house at a time, so the player picks one price
--- addon (config.choices, saved per account in CP.db.priceSource). Its sources are read
--- first and the rest fill gaps in `config.order`: DaylightMogul, Daylight UI's Auction House
--- (DaylightUI.AuctionPrices), Auctionator (its public v1 API), TSM (TSM_API), Auctioneer
--- (AucAdvanced.API), ProfLost's own scan (Scan.lua), then Glowey's Recipes (its public
--- DaylightRecipes.API). With no pick saved, or a pick whose addon isn't loaded, the order
--- alone decides. Each addon is looked up at call time, so one that publishes late or
--- switches off is followed.
+-- addon (config.choices, saved per account in CP.db.priceSource), or Automatic. A pick's
+-- sources are read first and the rest fill gaps in `config.order`: DaylightMogul, Daylight
+-- UI's Auction House (DaylightUI.AuctionPrices), Auctionator (its public v1 API), TSM
+-- (TSM_API), Auctioneer (AucAdvanced.API), ProfLost's own scan (Scan.lua), then Glowey's
+-- Recipes (its public DaylightRecipes.API). With Automatic, no pick saved, or a pick whose
+-- addon isn't loaded, the order alone decides. Each addon is looked up at call time, so one
+-- that publishes late or switches off is followed.
 
 local Pricing = {}
 CP.Pricing = Pricing
@@ -36,8 +36,14 @@ Pricing.config = {
     tsmItem = "i:%d",                -- TSM's item string for a plain item
     auctioneerItem = "item:%d",      -- Auctioneer reads a link; a bare id needs the item cached
 
-    -- What the player picks from, in the options' order. `reads`: the sources read first.
-    -- `folders`: the addon folders that count it as installed.
+    -- Saved for Automatic: the order alone decides.
+    automatic = "automatic",
+    automaticLabel = "Automatic",
+    notInstalled = "%s (not installed)",   -- a saved pick whose addon is gone
+
+    -- What the player picks from. The options list Automatic, ProfLost's scan, then the rest in
+    -- this order. `reads`: the sources read first. `folders`: the addon folders that count it
+    -- as installed.
     choices = {
         { key = "tsm", label = "TSM", name = "TSM", reads = { "tsm" }, folders = { "TradeSkillMaster" } },
         { key = "auctioneer", label = "Auctioneer", name = "Auctioneer", reads = { "auctioneer" },
@@ -48,7 +54,7 @@ Pricing.config = {
           folders = { "DaylightMogul", "DaylightUI_AuctionHouse" } },
         { key = "glowey", label = "Glowey's Recipes", name = "Glowey's Recipes", reads = { "glowey" },
           folders = { "DaylightRecipes" } },
-        { key = "scan", label = "ProfLost's own scan", name = "ProfLost", reads = { "scan" } },
+        { key = "scan", label = "Professionally Lost's Own", name = "ProfLost", reads = { "scan" } },
     },
 
     -- Staple materials: any one priced means a source with no count of its own has data.
@@ -243,8 +249,14 @@ end
 function Pricing.Choices() return config.choices end
 function Pricing.ChoiceInfo(key) return choiceBy[key] end
 
--- The saved pick, or nil.
+-- The saved answer: a choice key, "automatic", or nil while none is saved.
 function Pricing.Choice()
+    local key = CP.db and CP.db.priceSource
+    return (choiceBy[key] or key == config.automatic) and key or nil
+end
+
+-- The saved choice key, or nil for Automatic or nothing saved.
+local function picked()
     local key = CP.db and CP.db.priceSource
     return choiceBy[key] and key or nil
 end
@@ -283,23 +295,41 @@ function Pricing.Best()
     return "scan"
 end
 
--- The choice whose switch shows on: the saved pick, else the best loaded now.
+-- What the dropdown shows: the saved pick, else Automatic.
 function Pricing.Selected()
-    return Pricing.Choice() or Pricing.Best()
+    return Pricing.Choice() or config.automatic
 end
 
 -- The pick read first: the saved one while its addon is loaded, else nil (the order alone).
 function Pricing.Active()
-    local key = Pricing.Choice()
+    local key = picked()
     if key and Pricing.Present(key) then return key end
     return nil
 end
 
 -- The saved pick's name while its addon isn't loaded, so prices come from the order alone.
 function Pricing.FellBack()
-    local key = Pricing.Choice()
+    local key = picked()
     if key and not Pricing.Present(key) then return choiceBy[key].name end
     return nil
+end
+
+-- The options dropdown's words by key, and its keys in order: Automatic, ProfLost's scan, then
+-- each installed addon. A saved pick whose addon is gone stays listed and says so.
+function Pricing.Listed()
+    local values = { [config.automatic] = config.automaticLabel, scan = choiceBy.scan.label }
+    local order = { config.automatic, "scan" }
+    local saved = picked()
+    for _, c in ipairs(config.choices) do
+        if c.key ~= "scan" then
+            local here = Pricing.Installed(c.key)
+            if here or c.key == saved then
+                values[c.key] = here and c.label or config.notInstalled:format(c.label)
+                order[#order + 1] = c.key
+            end
+        end
+    end
+    return values, order
 end
 
 -- True while ProfLost's own scan is the one to run: picked, or nothing picked and nothing
@@ -310,9 +340,9 @@ function Pricing.ScanChosen()
     return Pricing.AddonSource() == nil
 end
 
--- Saves choice `key`. Prices re-rank, and the options page redraws so the old switch shows off.
+-- Saves choice `key` or "automatic". Prices re-rank, and the options page redraws its note.
 function Pricing.Choose(key)
-    if not (choiceBy[key] and CP.db) then return false end
+    if not ((choiceBy[key] or key == config.automatic) and CP.db) then return false end
     if CP.db.priceSource == key then return true end
     CP.db.priceSource = key
     Pricing.Changed()
@@ -320,14 +350,18 @@ function Pricing.Choose(key)
     return true
 end
 
--- The note under the switches.
+-- The note under the dropdown.
 function Pricing.ChoiceNote()
     local gone = Pricing.FellBack()
     if gone then
         local _, name = Pricing.AddonSource()
         return ("%s isn't loaded, so prices come from %s first."):format(gone, name or config.names.scan)
     end
-    local c = choiceBy[Pricing.Selected()]
+    if not picked() then
+        local _, name = Pricing.AddonSource()
+        return ("Automatic: prices come from %s first. Other addons' prices fill gaps."):format(name or config.names.scan)
+    end
+    local c = choiceBy[picked()]
     if c.key == "scan" then return "ProfLost scans at the auction house. Other addons' prices fill gaps." end
     return ("Prices come from %s first. Other addons' prices fill gaps."):format(c.name)
 end
@@ -434,6 +468,21 @@ function Pricing.Changed()
 end
 
 local auctionatorHeard = false   -- Auctionator calls back when its prices move
+local auctioneerHooked = setmetatable({}, { __mode = "k" })   -- AucAdvanced tables heard
+
+-- Auctioneer's messages to its modules that mean its prices moved: it turned active (its server
+-- key is set), or a scan's prices are stored, which can come after the auction house closed.
+Pricing.AUCTIONEER_NEW = { gameactive = true, scanstats = true }
+
+-- Hooks Auctioneer's SendProcessorMessage once, after the call, so its own modules hear it first.
+local function hearAuctioneer()
+    local auc = rawget(_G, "AucAdvanced")
+    if not (auctioneer() and type(auc.SendProcessorMessage) == "function") or auctioneerHooked[auc] then return end
+    auctioneerHooked[auc] = true
+    hooksecurefunc(auc, "SendProcessorMessage", function(msg)
+        if Pricing.AUCTIONEER_NEW[msg] then Pricing.Changed() end
+    end)
+end
 
 -- Listens to every price source that says when its prices move. Runs at login.
 function Pricing.Listen()
@@ -453,14 +502,21 @@ function Pricing.Listen()
     if v1 and type(v1.RegisterForDBUpdate) == "function" then
         auctionatorHeard = pcall(v1.RegisterForDBUpdate, config.caller, Pricing.Changed)
     end
+    hearAuctioneer()
+
+    -- TSM loads its prices in its own login handler and says nothing, so they count as new once
+    -- every login handler has run.
+    if tsm() then C_Timer.After(0, Pricing.Changed) end
 end
 
 CP:On("PLAYER_LOGIN", function() Pricing.Listen() end)
 
--- Auctioneer, and an Auctionator without its update callback, say nothing when their
--- prices move: those count as new once the auction house closes.
+-- An Auctionator without its update callback, and an Auctioneer not heard through its messages,
+-- say nothing when their prices move. Their prices count as new once the auction house closes.
 CP:On("AUCTION_HOUSE_CLOSED", function()
-    if (not auctionatorHeard and auctionator()) or auctioneer() then Pricing.Changed() end
+    local auc = rawget(_G, "AucAdvanced")
+    local aucQuiet = auctioneer() ~= nil and not auctioneerHooked[auc]
+    if (not auctionatorHeard and auctionator()) or aucQuiet then Pricing.Changed() end
 end)
 
 -- `guideItem` is the guide's { vendorPrice, soldByVendor } entry for the item.

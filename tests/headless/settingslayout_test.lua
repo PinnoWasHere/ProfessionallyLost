@@ -26,7 +26,7 @@ local ORDER = {
     { "Gathering window", { "gatherAttached", "gatherSide", "Gathering window scale", "vendorAlerts",
                            "mapIcons", "otherZones", "gatherHideInCombat" } },
     { "Tooltips and bags", { "itemTooltip", "unitTooltip", "neededMarks" } },
-    { "Prices", { "TSM", "Auctioneer", "Auctionator", "Daylight UI", "Glowey's Recipes", "ProfLost's own scan", "note" } },
+    { "Prices", { "Price Addon", "note" } },
     { "Glowey's Recipes", { "gloweyGuide", "gloweyBuy", "gloweyTips", "Open Glowey's Recipes",
                             "Glowey's Recipes settings", "Put everything back" } },
     { "Help", { "Report a bug", "whatsNew", "What's New", "newerNotice", "Take the tour" } },

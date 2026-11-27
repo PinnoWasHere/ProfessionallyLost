@@ -39,9 +39,6 @@ function Plugin.RegisterMovers(me)
     gp.managed.mover = me.RegisterMover(gp.anchor, gp.MOVER, gp.MOVER_LABEL, gp.Beside()) == true
 end
 
--- Added to a price row's description when its addon isn't installed.
-Plugin.NOT_INSTALLED = "Not installed."
-
 -- Daylight UI options rows from CP.Settings. `API` (optional) gives the font row.
 function Plugin.Pages(API)
     local groups = {}
@@ -49,8 +46,12 @@ function Plugin.Pages(API)
         local items = {}
         for _, s in ipairs(g.items) do
             if s.kind == "choice" then
+                -- A dropdown without a key keeps its value elsewhere through get, set and default,
+                -- and `choices()` gives its words and order each time it opens (Options/Registry.lua
+                -- Validate, Options/Widgets.lua W.dropdown).
                 items[#items + 1] = { type = "dropdown", key = s.key, label = s.label, desc = s.desc, values = s.values,
-                                      disabled = s.disabled }
+                                      choices = s.choices and function() return s.choices() end or nil,
+                                      get = s.get, set = s.set, default = s.default, disabled = s.disabled }
             elseif s.kind == "slider" then
                 -- A slider without a key keeps its value elsewhere: Daylight UI's rows take
                 -- get, set and default (Options/Registry.lua Validate).
@@ -82,15 +83,9 @@ function Plugin.Pages(API)
                 elseif s.when then
                     hidden = function() return not s.when() end
                 end
-                local desc = s.desc
-                if s.missing and s.missing() then desc = desc .. " " .. Plugin.NOT_INSTALLED end
-                local row = { type = "toggle", key = s.key, label = s.label, desc = desc,
+                local row = { type = "toggle", key = s.key, label = s.label, desc = s.desc,
                               disabled = s.disabled, hidden = hidden }
-                if not s.key then
-                    -- A switch that keeps its value elsewhere (the price picks): its own get,
-                    -- set and default (Options/Registry.lua Validate).
-                    row.get, row.set, row.default = s.get, s.set, s.default
-                elseif s.shown or s.disabled then
+                if s.shown or s.disabled then
                     -- The switch draws Settings.Shown(s), off while the row is greyed (Options.Get
                     -- reads item.get); a click still saves through Daylight UI's own setter, and
                     -- its default is ProfLost's.
