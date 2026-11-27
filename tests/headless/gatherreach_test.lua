@@ -76,7 +76,8 @@ end)
 
 T.test("a gathering skill-up that crosses a source's need moves the plan's key; one that crosses none does not", function()
     character(160, 38)
-    local guide = CP.Guides[LW]
+    -- A view of the guide of its own, so no key an earlier test left stands in.
+    local guide = setmetatable({}, { __index = CP.Guides[LW] })
     local at160 = CP.Plan.ReachKey(guide)
     CraftWorld.SetSkill(SKIN, 165)
     T.eq(CP.Plan.ReachKey(guide), at160, "nothing of the guide's needs 161 to 165")
@@ -124,7 +125,7 @@ end)
 
 T.test("the reach key reads every gathered material of the guide", function()
     character(300, 60)
-    local guide = CP.Guides[LW]
+    local guide = setmetatable({}, { __index = CP.Guides[LW] })
     local all = CP.Plan.ReachKey(guide)
     T.ok(all:find("^3/"), "Green Whelp Scale, Thick and Rugged Leather in reach at Skinning 300: " .. all)
 end)

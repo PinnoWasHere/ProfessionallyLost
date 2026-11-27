@@ -469,14 +469,10 @@ local function standingKey(guide)
     return table.concat(parts, ",")
 end
 
--- Each guide's materials a gathering profession or Fishing gets (Sourcing.GatherSkill), with
--- the lines that get them: { { item, line, line2 }, ... }, built once per guide.
-local gatheredOf = setmetatable({}, { __mode = "k" })
+-- The guide's materials a gathering profession or Fishing gets (Sourcing.GatherSkill), with the
+-- lines that get them, by item id: { { item, line, line2 }, ... }.
 local function gathered(guide)
-    local list = gatheredOf[guide]
-    if list then return list end
-    list = {}
-    local seen = {}
+    local list, seen = {}, {}
     for _, r in pairs(guide.recipes) do
         for _, pair in ipairs(r.reagents or {}) do
             local item = pair[1]
@@ -488,7 +484,6 @@ local function gathered(guide)
         end
     end
     table.sort(list, function(a, b) return a[1] < b[1] end)
-    gatheredOf[guide] = list
     return list
 end
 
