@@ -5,9 +5,9 @@
 local CP = ProfLost
 local GT = CP.GuideTab
 local ENCHANTING, TAILOR = 333, 197
-local LINEN, BOLT = 2589, 2963
+local LINEN, BOLT = 2589, 2964   -- Bolt of Woolen Cloth: the shoulders after it run longer, made to disenchant
 
-T.test("Tailoring 1 with Enchanting: the bolt row moved, and names no profession", function()
+T.test("Tailoring 1 with Enchanting: the woolen bolt row moved, and names no profession", function()
     MapWorld.begin({ zone = 1429, level = 20, side = "Alliance" })
     CraftWorld.begin({ professions = { [ENCHANTING] = { rank = 1, max = 75 }, [TAILOR] = { rank = 1, max = 75 } },
                        bags = { [LINEN] = 42 } })

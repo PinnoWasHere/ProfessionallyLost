@@ -27,9 +27,11 @@ T.test("Level-as-you-go leaves no skill points without a recipe", function()
     end
 end)
 
-T.test("cloth from creatures isn't a rare byproduct; hides still are", function()
+T.test("cloth and hides are farmed at their own chance; a cooldown-made material is stock-only", function()
     T.eq(CP.Guides[197].items[4338][5], nil, "Mageweave Cloth")
-    T.eq(CP.Guides[165].items[4235][5], true, "Heavy Hide")
+    T.eq(CP.Guides[165].items[4235][5], nil, "Heavy Hide: a loot chance when skinning (owner, 2026-11-27)")
+    T.ok(CP.Guides[165].items[4235][4] > 25, "Heavy Hide costs about 33 skins")
+    T.eq(CP.Guides[197].items[14342][5], true, "Mooncloth")
 end)
 
 T.test("no guide step leans on a material made on a cooldown", function()

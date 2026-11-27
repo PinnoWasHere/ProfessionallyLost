@@ -71,7 +71,7 @@ for _, case in ipairs({ { "login", true, false }, { "/reload", false, true } }) 
     T.test(name .. " with Tailoring never opened: the first open plans as if nothing ran before", function()
         local profs = { [TAILOR] = { rank = 60, max = 75 } }
         local want = firstOpen(profs, TAILOR)
-        T.ok(want:find("^step:60%-75:") ~= nil, "control: crafts to 75 before training")
+        T.ok(want:find("^step:60%-%d+:") ~= nil, "control: crafts from 60 before training: " .. want)
 
         character(profs)
         T.fire("PLAYER_ENTERING_WORLD", login, reload)

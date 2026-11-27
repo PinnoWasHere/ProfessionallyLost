@@ -80,8 +80,9 @@ end)
 T.test("Level-as-you-go counts materials to collect, not gold", function()
     DaylightMogul = { API = { Price = function() return 1 end } }
     local leather, hide = CP.Pricing.GetCollect(2319, lw.items[2319]), CP.Pricing.GetCollect(4232, lw.items[4232])
-    T.ok(leather > 0 and leather < 2, "Medium Leather: about a skin each")
-    T.eq(hide, leather, "Medium Hide comes with the same skins, so it costs the same")
+    T.ok(leather > 1.5 and leather < 3, ("Medium Leather: about two skins each (%.1f)"):format(leather))
+    T.ok(hide > 15, ("Medium Hide: about 22 skins each, its own chance (%.1f)"):format(hide))
+    T.eq(lw.items[4232].src, lw.items[2319].src, "both come from one skin kind")
     T.eq(CP.Pricing.GetCollect(9999, { 200, false }), 1, "no loot data: one to collect")
     T.eq(select(2, CP.Pricing.GetCollect(2320, { 10, true })), "vendor")
     T.ok(CP.Pricing.GetCollect(2320, { 10, true }) < 1, "vendor thread is a short trip")
@@ -375,9 +376,21 @@ T.test("a recipe needing cured hides is planned without a curing step, curing on
     T.eq(noCure[1].spell, 2, "the curing recipe needn't be a step, only known or learnable")
 end)
 
-T.test("Level-as-you-go cures only the hides on hand, then carries on with something else", function()
-    -- Owner: use 3 Cured Heavy Hides' worth, make something else, cure more as hides turn up.
-    T.ok(lw.items[4235][5], "Heavy Hide is a rare byproduct")
+-- The Leatherworking guide with `items` marked stock-only (guide item field 5) at one loot each, as
+-- Black Lotus and cooldown-made materials are marked. Heavy Hide itself is farmed at its own chance
+-- (owner, 2026-11-27).
+local function stockOnly(items)
+    local marked = {}
+    for _, item in ipairs(items) do
+        local info = lw.items[item]
+        marked[item] = { info[1], info[2], info[3], 1, true }
+    end
+    return setmetatable({ items = setmetatable(marked, { __index = lw.items }) }, { __index = lw })
+end
+
+T.test("Level-as-you-go uses only the stock-only materials on hand, then carries on with something else", function()
+    local lw = stockOnly({ 4235 })
+    T.ok(lw.items[4235][5], "Heavy Hide marked stock-only")
     local learned = { [3818] = true, [3780] = true, [9195] = true, [2166] = true }
     local only = function(id) return learned[id] == true end
     local function curing(steps)
@@ -406,6 +419,7 @@ end)
 
 T.test("hide crafts sit beside the main path as side crafts, and the main path doesn't move", function()
     -- Owner: crafts doable "at the same time" mustn't flip positions; mark them interchangeable.
+    local lw = stockOnly({ 4235 })
     local learned = { [3818] = true, [3780] = true, [2166] = true }
     local only = function(id) return learned[id] == true end
     local function main(held)
@@ -435,6 +449,7 @@ end)
 T.test("a side craft is always a recipe the player knows, never a pattern to buy", function()
     -- In-game: Deviate Scale Gloves (a limited vendor pattern) showed as a side craft.
     CP.db.collect = true
+    local lw = stockOnly({ 4235, 6470, 6471 })
     local learned = { [3780] = true, [2166] = true }  -- Cured Heavy Hide not known
     local steps = CP.Solver.Plan(lw, 125, learned, CP.Pricing.GetCollect, nil, nil, {}, { rareFromStock = true })
     for _, side in pairs(CP.Plan.Sides(lw, steps, learned, { [4235] = 10, [6470] = 10, [6471] = 10 })) do

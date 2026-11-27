@@ -5,7 +5,7 @@ local CP = ProfLost
 local W, B, GT = CP.Window, CP.Buying, CP.GuideTab
 local LW, TAILOR = 165, 197
 local THREAD, SALT, HEAVY_HIDE_SPELL = 2321, 4289, 3818
-local ARMOR_SPELL, ARMOR_PATTERN = 3772, 7613   -- Green Leather Armor, a vendor pattern learnable at 130
+local ARMOR_SPELL, ARMOR_PATTERN = 4096, 13287   -- Raptor Hide Harness, a vendor pattern learnable at 140
 
 local bought
 
@@ -188,7 +188,7 @@ T.test("materials first, then a second confirmation with the patterns and the sk
     merchant({ { THREAD, 100 }, { ARMOR_PATTERN, 5000 } })
     local pat = patternLine()
     T.ok(pat ~= nil, "a pattern the player can't learn yet is offered")
-    T.eq(pat.skill, 130)
+    T.eq(pat.skill, 140)
     T.eq(lineFor(ARMOR_PATTERN), nil, "never among the materials")
     local b = B.Button()
     T.ok(CP.Style.IsOn(b), "on")
@@ -200,7 +200,7 @@ T.test("materials first, then a second confirmation with the patterns and the sk
     T.advance(B.STEP * 10)
     for _, c in ipairs(bought) do T.eq(c[1], 1, "only thread so far") end
     T.ok(B.popup:IsShown() and B.popup.kind == "patterns", "then the patterns")
-    T.ok(B.popup.lines[1]:GetText():find("learnable at 130", 1, true) ~= nil, B.popup.lines[1]:GetText())
+    T.ok(B.popup.lines[1]:GetText():find("learnable at 140", 1, true) ~= nil, B.popup.lines[1]:GetText())
     local took = #bought
     click(B.popup.all)
     T.eq(#bought, took + 1, "the pattern bought on its own click")
@@ -232,7 +232,7 @@ T.test("no materials to buy: ProfLost Buy goes straight to the patterns", functi
     T.ok(CP.Style.IsOn(b), "on with patterns alone: " .. tostring(B.Reason()))
     click(b)
     T.ok(B.popup:IsShown() and B.popup.kind == "patterns", "the pattern confirmation")
-    T.ok(B.popup.lines[1]:GetText():find("learnable at 130", 1, true) ~= nil)
+    T.ok(B.popup.lines[1]:GetText():find("learnable at 140", 1, true) ~= nil)
     click(B.popup.all)
     T.eq(#bought, 1)
 end)

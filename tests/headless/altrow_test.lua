@@ -1,7 +1,8 @@
 -- The "or" row under the step being crafted follows the skill and the bags: after every
 -- craft of a batch, the guide shows what a fresh read at the same skill and bags shows.
 -- The owner's sequence: Leatherworking 136, eight Heavy Armor Kits to 143 (one gives no
--- point), then three Cured Heavy Hides from the "or" row, green, no point.
+-- point), then three Cured Heavy Hides, green, no point. Hides are farmed at their own
+-- chance (owner, 2026-11-27), so no "or" row offers the curing.
 
 local CP = ProfLost
 local LW = 165
@@ -115,17 +116,14 @@ local function craft(label, spell, n, miss)
     end
 end
 
-local YELLOW_TEXT = ("%.2f,%.2f,%.2f"):format(unpack(CP.Style.difficulty[CP.Professions.YELLOW]))
-
 local function sequence(name, spec)
     T.test(name, function()
         scene(spec)
         local one = (spec.mode or "one") == "one"
         if one then
-            local cure = orRow(CURE)
-            print(name .. ", at 136: " .. cure)
-            T.ok(cure:find("|Cured Heavy Hide to 140|", 1, true), "at 136 the hide row runs to 140, where it greens: " .. cure)
-            T.ok(cure:find(YELLOW_TEXT, 1, true), "in yellow: " .. cure)
+            -- Hides in the bags are no side craft: a Heavy Hide is farmed at its own chance
+            -- (about 33 skins), so curing one is no cheap "or" beside the kits.
+            T.eq(orRow(CURE), "none", "at 136 no Cured Heavy Hide row")
         end
         craft("kit", KIT, 8, 4)
         T.eq(CraftWorld.state.profs[LW].rank, 143, "eight kits, seven points: 143")

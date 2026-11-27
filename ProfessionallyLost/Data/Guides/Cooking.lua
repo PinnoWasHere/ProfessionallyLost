@@ -104,8 +104,9 @@ CP.Guides[185] = {
         [1295834] = { name = "Plain Ol' Paletusk", src = "pattern", learn = 185, yellow = 200, grey = 230, ups = 1, reagents = { { 769, 2 }, { 2678, 1 } }, pattern = 274977, makes = 274976 },
     },
     -- itemID = { vendor buy price in copper, sold by a vendor without limit, crafted by (skill lines),
-    --            loots per unit when farmed (Level-as-you-go effort), rare byproduct (plan with stock only),
+    --            loots per unit when farmed (Level-as-you-go effort), planned from stock only,
     --            effort by disenchanting greens a profession crafts { [skillLine] = effort } }
+    --   src = the skin or node kind it is gathered from; materials of one kind share its loots
     items = {
         [159] = { 25, true },
         [723] = { 60, false, nil, 2.9 },
@@ -119,7 +120,7 @@ CP.Guides[185] = {
         [1179] = { 125, true },
         [1468] = { 115, false, nil, 2.8 },
         [2251] = { 48, false, nil, 2.8 },
-        [2452] = { 60, false, nil, 0.3 },
+        [2452] = { 60, false, nil, 1.7, src = "node 785" },
         [2596] = { 120, true },
         [2672] = { 16, false, nil, 1.3 },
         [2673] = { 40, false, nil, 1.9 },
@@ -140,7 +141,7 @@ CP.Guides[185] = {
         [3713] = { 160, true },
         [3730] = { 180, false, nil, 2.4 },
         [3731] = { 220, false, nil, 2.4 },
-        [3821] = { 600, false, nil, 0.5 },
+        [3821] = { 600, false, nil, 0.5, src = "node 3821" },
         [4402] = { 1000, false, nil, 9.6 },
         [4470] = { 38, true },
         [4536] = { 25, true },

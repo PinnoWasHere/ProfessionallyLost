@@ -48,17 +48,67 @@ local function affordable(tier, c)
     return nil
 end
 
--- Cost of one craft, and whether any material had no price.
-function Solver.CraftCost(guide, recipe, priceFn)
-    local total, missing = 0, false
-    for _, pair in ipairs(recipe.reagents) do
-        local price = priceFn(pair[1], guide.items and guide.items[pair[1]])
-        if not price then
-            price, missing = priced(priceFn, guide, pair[1]), true
-        end
-        total = total + price * pair[2]
+-- A craft's bill of materials. Plain costs add up. Under Level-as-you-go the materials of
+-- one skin or node kind (guide item `src`) share its loots: 8 Heavy Leather and a Heavy Hide
+-- take the hide's 33 skins, not 33 plus 16. So a kind costs the most any one of its
+-- materials needs. Only Pricing.GetCollect's "collect" effort shares; gold never does.
+local function shareOf(how, info)
+    return how == "collect" and info and info.src or nil
+end
+Solver.ShareOf = shareOf
+
+local function billClear(bill)
+    for i = 1, bill.n do bill.at[bill.keys[i]] = nil end
+    bill.total, bill.n = 0, 0
+end
+
+local function billAdd(bill, cost, src)
+    if not src then
+        bill.total = bill.total + cost
+        return
     end
-    return total, missing
+    local was = bill.at[src]
+    if not was then
+        bill.n = bill.n + 1
+        bill.keys[bill.n] = src
+        bill.at[src] = cost
+    elseif cost > was then
+        bill.at[src] = cost
+    end
+end
+
+-- The bill's sum, the kinds in the order they came, so equal bills sum alike.
+local function billSum(bill)
+    local total = bill.total
+    for i = 1, bill.n do total = total + bill.at[bill.keys[i]] end
+    return total
+end
+
+local function newBill() return { total = 0, n = 0, keys = {}, at = {} } end
+local PREP_DEPTH = 3
+
+-- Cost of one craft, and whether any material had no price. Under Level-as-you-go a prep
+-- material (a Cured Heavy Hide, a Bolt of Linen Cloth) costs what making it takes, as the
+-- point-by-point pass counts it, so the hide inside it shares its skins with the leather beside it.
+function Solver.CraftCost(guide, recipe, priceFn)
+    local bill, missing = newBill(), false
+    local prep = guide.prep or {}
+    local function add(item, n, depth)
+        local info = guide.items and guide.items[item]
+        local price, how = priceFn(item, info)
+        if not price then
+            price, missing = priced(priceFn, guide, item), true
+        end
+        local maker = how == "collect" and depth < PREP_DEPTH and prep[item] and guide.recipes[prep[item]]
+        if maker then
+            local runs = n / (maker.yield or 1)
+            for _, pair in ipairs(maker.reagents) do add(pair[1], pair[2] * runs, depth + 1) end
+            return
+        end
+        billAdd(bill, price * n, shareOf(how, info))
+    end
+    for _, pair in ipairs(recipe.reagents) do add(pair[1], pair[2], 0) end
+    return billSum(bill), missing
 end
 
 -- True when every material of `a` is also a material of `b`.
@@ -191,7 +241,7 @@ local function settle(guide, skill, cap, picks, learned, usable, held, opts, hol
         local ok = s0 and s0 < top and usable(m.id) and (learned[m.id] or M.learn <= s0)
             and G.Chance(M, s0) > 0
         if ok then
-            -- Held rare materials cap what can be made (Level-as-you-go's hides).
+            -- Held stock-only materials cap what can be made (Level-as-you-go).
             local rareCap
             if opts and opts.rareFromStock then
                 for _, raw in ipairs(M.reagents) do
@@ -319,9 +369,9 @@ end
 -- `guide.craftOnly` comes only from earlier steps: a recipe needing it is usable only
 -- while what earlier picks made, plus `held` (craft-only item -> count in the
 -- player's bags), covers it (no Fine Leather Belts made, no Dark Leather Belt).
--- `opts.rareFromStock` (Level-as-you-go) limits rare byproducts (guide item field 5,
--- hides) to what `held` has, so curing covers the hides on hand and other recipes
--- the rest; the next re-plan adds curing back as more hides turn up.
+-- `opts.rareFromStock` (Level-as-you-go) limits stock-only materials (guide item field 5:
+-- Black Lotus, cooldown-made ones) to what `held` has, so a recipe uses the ones on hand
+-- and other recipes the rest; the next re-plan adds it back as more turn up.
 -- `opts.credit(id, recipe, cost)`, when given, returns a craft's cost after what its
 -- output saves another guide (greens disenchanted for Enchanting).
 -- `opts.plain` = { allow, price, touched(id, recipe), causes(id, recipe) }, when given, is the character
@@ -345,14 +395,16 @@ local function solve(guide, skill, learned, priceFn, allow, prefer, held, opts, 
 
     -- Each item is priced once per solve. Prices can't change while it runs, and the memo
     -- dies with it.
-    local asked, rawPrice = {}, priceFn
+    local asked, askedHow, rawPrice = {}, {}, priceFn
     priceFn = function(item, info)
         local p = asked[item]
         if p == nil then
-            p = rawPrice(item, info) or false
-            asked[item] = p
+            local how
+            p, how = rawPrice(item, info)
+            p = p or false
+            asked[item], askedHow[item] = p, how or false
         end
-        return p or nil
+        return p or nil, askedHow[item] or nil
     end
 
     local ids, spare, cost, prices, cap = {}, {}, {}, {}, 0
@@ -388,7 +440,7 @@ local function solve(guide, skill, learned, priceFn, allow, prefer, held, opts, 
 
     local craftOnly, prep = guide.craftOnly or {}, guide.prep or {}
 
-    -- Rare byproducts limited to what is held: Level-as-you-go's hides, built once per solve.
+    -- Stock-only materials limited to what is held (Level-as-you-go), built once per solve.
     local rareSet = {}
     if opts and opts.rareFromStock then
         for item, it in pairs(guide.items or {}) do
@@ -443,17 +495,30 @@ local function solve(guide, skill, learned, priceFn, allow, prefer, held, opts, 
         holdId, holdEnd = nil, skill
     end
 
-    -- Cost of making `count` of a prep material (a Cured Heavy Hide) at skill `s`, or
-    -- nil when its recipe isn't usable yet or the rare materials on hand fall short.
-    local function prepCost(item, s, count)
-        local maker = guide.recipes[prep[item]]
-        if not maker or not (learned[prep[item]] or maker.learn <= s) then return nil end
-        local runs, total = count / (maker.yield or 1), 0
-        for _, pair in ipairs(maker.reagents) do
-            if rare(pair[1]) and (made[pair[1]] or 0) + 1e-9 < pair[2] * runs then return nil end
-            total = total + pair[2] * runs * priceOf(pair[1])
+    -- The skin or node kind whose loots `item` shares (shareOf), once per solve.
+    local kinds = {}
+    local function kindOf(item)
+        local k = kinds[item]
+        if k == nil then
+            local info = guide.items and guide.items[item]
+            local _, how = priceFn(item, info)
+            k = shareOf(how, info) or false
+            kinds[item] = k
         end
-        return total
+        return k or nil
+    end
+
+    -- Adds making `count` of a prep material (a Cured Heavy Hide) at skill `s` to `bill`;
+    -- false when its recipe isn't usable yet or the rare materials on hand fall short.
+    local function prepCost(item, s, count, bill)
+        local maker = guide.recipes[prep[item]]
+        if not maker or not (learned[prep[item]] or maker.learn <= s) then return false end
+        local runs = count / (maker.yield or 1)
+        for _, pair in ipairs(maker.reagents) do
+            if rare(pair[1]) and (made[pair[1]] or 0) + 1e-9 < pair[2] * runs then return false end
+            billAdd(bill, pair[2] * runs * priceOf(pair[1]), kindOf(pair[1]))
+        end
+        return true
     end
 
     -- Cost of one expected skill point at skill `s`: the craft's materials over the
@@ -461,26 +526,23 @@ local function solve(guide, skill, learned, priceFn, allow, prefer, held, opts, 
     -- (nil when earlier steps haven't made enough). Prep materials in the player's bags
     -- are free past the current step; the rest cost what making them takes, even when an
     -- earlier pick made them, so a bolt and the cloak that uses it don't trade points one by one.
+    -- One bill, cleared for each point's cost: this runs per skill point per recipe.
+    local bill = newBill()
     local function pointCost(r, p, s)
-        local total = 0
+        billClear(bill)
         for _, pair in ipairs(r.reagents) do
             local item, use = pair[1], pair[2] / p
             if craftOnly[item] then
                 if (made[item] or 0) + 1e-9 < use then return nil end
             elseif prep[item] then
                 local short = use - (s < reserveEnd and 0 or (stock[item] or 0))
-                if short > 0 then
-                    local c = prepCost(item, s, short)
-                    if not c then return nil end
-                    total = total + c
-                end
-            elseif rareSet[item] then
-                if (made[item] or 0) + 1e-9 < use then return nil end
-                total = total + use * (prices[item] or priceOf(item))
+                if short > 0 and not prepCost(item, s, short, bill) then return nil end
             else
-                total = total + use * (prices[item] or priceOf(item))
+                if rareSet[item] and (made[item] or 0) + 1e-9 < use then return nil end
+                billAdd(bill, use * (prices[item] or priceOf(item)), kindOf(item))
             end
         end
+        local total = billSum(bill)
         -- What the output saves another guide, per craft, spread over the expected point.
         if credit then return credit(nil, r, total * p) / p end
         return total

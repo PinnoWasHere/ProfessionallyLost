@@ -199,7 +199,7 @@ end
 -- Solver option for a guide other than Enchanting when the player has Enchanting:
 -- lowers a craft's cost by what disenchanting it saves the Enchanting guide, never
 -- below MIN_SHARE of its cost. Level-as-you-go counts the world effort of the
--- materials (field 4, not the craft route, which would count the craft twice);
+-- materials (Pricing.Effort, not the craft route, which would count the craft twice);
 -- Buy-and-power-level counts their auction price. Make one per solve: it keeps each
 -- recipe's credit, which depends on the recipe alone while the solve runs. `needs` and
 -- `steps` are Enchanting's (Shared.EnchantingNeeds when nil); a recipe's dust counts only
@@ -211,7 +211,7 @@ function Shared.CreditFor(guideKey, collect, skills, needs, steps)
     steps = steps or stepsOf[needs]
     local prices = {}
     local value = collect
-        and function(_, info) return info and info[4] or 1 end
+        and function(_, info) return CP.Pricing.Effort(info) end
         or function(item)
             local p = prices[item]
             if p == nil then

@@ -538,8 +538,14 @@ end
 -- Level-as-you-go weighs materials by the work of collecting them, not by gold: a
 -- farmed material costs the kills, skins or nodes one unit typically takes (guide
 -- item field 4: ~1.6 for Light Leather, ~22 for Medium Hide); vendor stock costs
--- VENDOR_EFFORT, a short trip; anything else counts 1.
+-- VENDOR_EFFORT, a short trip; anything else counts 1. Materials of one skin or node
+-- kind (guide item `src`) share its loots: Solver.CraftCost counts the kind once.
 local VENDOR_EFFORT = 0.1
+
+-- Loots per unit of a guide item farmed from the world: field 4, else 1.
+function Pricing.Effort(guideItem)
+    return guideItem and guideItem[4] or 1
+end
 
 -- A fish is almost free while the player is levelling Fishing anyway: each cast that
 -- gives a skill-up also lands one. With Fishing and Cooking paired, Cooking counts it
@@ -588,7 +594,7 @@ end
 -- `skills` (optional) is Sourcing.PlayerSkills()'s answer when the caller has it.
 function Pricing.GetCollect(itemID, guideItem, skills)
     if guideItem and guideItem[2] then return VENDOR_EFFORT, "vendor" end
-    local effort = guideItem and guideItem[4] or 1
+    local effort = Pricing.Effort(guideItem)
     if effort > FISH_EFFORT and Pricing.IsFish(itemID) and Pricing.FishingFree() then
         return FISH_EFFORT, "fishing"
     end

@@ -153,13 +153,13 @@ local BIG = 1e9
 local function soloPrice(solo)
     return function(item, info)
         local effort, how = CP.Pricing.GetCollect(item, info, solo)
-        if how ~= "fishing" then return effort end
+        if how ~= "fishing" then return effort, how end
         -- No Fishing: a fish costs its own effort.
-        effort = info and info[4] or 1
+        effort = CP.Pricing.Effort(info)
         for line, e in pairs(info and info[6] or {}) do
             if solo[line] and e < effort then effort = e end
         end
-        return effort
+        return effort, "collect"
     end
 end
 
