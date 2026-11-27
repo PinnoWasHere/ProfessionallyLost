@@ -296,6 +296,7 @@ local P = CP.Peers
 -- Whispers `name` through the peers' own path, so P.HideSystem has it on record.
 local function whispered(name)
     PeerWorld.begin({ version = "0.2.0", zone = 2548 })
+    World.set(CP.db, "newsSeen", CP.db.newsSeen)
     local peer = PeerWorld.Peer(name, { version = "0.1.0" })
     peer:Hello("YELL")
     T.advance(2)

@@ -18,6 +18,7 @@ local function scene()
     World.set(C_AddOns, "GetAddOnMetadata", function(addon, key)
         if addon == CP.name and key == "Version" then return VERSION end
     end)
+    World.set(CP.db, "newsSeen", CP.db.newsSeen)
     World.set(CP.db, "hideInCombat", true)
     World.set(CP.db, "windowClosed", nil)
     World.set(CP.db, "windowCollapsed", nil)
