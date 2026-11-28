@@ -143,12 +143,30 @@ for _, m in ipairs(METRICS) do
                 T.ok(not (l.kind == "cont" and (l.of == lead or l.of and l.of.spotOf == lead)),
                     at .. ": no wrapped line under a Best farm row: " .. tostring(l.text))
             end
+            -- Profit rows shorten their price the same way and keep the full one in the tooltip.
+            local _, drawn = GL.Drawn()
+            for _, r in ipairs(drawn) do
+                local l = r:IsShown() and r.line
+                if l and l.prices and not l.fit then
+                    local info = r.info:GetText()
+                    local k
+                    for n, p in ipairs(l.prices) do if p == info then k = n end end
+                    T.ok(k ~= nil, ("%s: Profit price is a known form: %s"):format(at, tostring(info)))
+                    if k and k > 1 then
+                        T.eq(l.tip and l.tip[#l.tip], l.prices[1], at .. ": Profit tooltip shows the full price")
+                    end
+                end
+            end
             for i, r in ipairs(rows) do
                 local line, name = r.line, r.name
                 local text = tostring(name:GetText())
                 local tag = ("%s, row %d %q"):format(at, i, text)
                 T.ok(not line.wrapped, tag .. ": the price stays on the row")
-                T.eq(r.info:GetText(), CP.Pricing.Format(i == 1 and 4600 or 4000) .. " ea (AH)", tag .. ": its price")
+                local money = CP.Pricing.Format(i == 1 and 4600 or 4000)
+                local prices = { money .. " ea (AH)", money .. " (AH)", money }
+                local info, at_ = r.info:GetText(), nil
+                for k, p in ipairs(prices) do if p == info then at_ = k end end
+                T.ok(at_ ~= nil, tag .. ": its price is a known form: " .. tostring(info))
                 T.eq(name:GetNumLines(), 1, tag .. ": one line")
                 T.ok(name:GetRight() <= r.info:GetLeft() + 0.5, tag .. ": the text's bound ends left of the price")
                 -- The first form that fits the row's room, in the fixed order.
@@ -167,9 +185,28 @@ for _, m in ipairs(METRICS) do
                     -- Not even the shortest form fits: it stands, and the font string's bound clips it.
                     T.eq(text, forms[#forms], ("%s: nothing fits %.0f px, the shortest form"):format(tag, room))
                 end
+                -- The name keeps at least "Best: Zone" (or the zone) while a shorter price remains.
+                local floor = #forms
+                for k, f in ipairs(forms) do
+                    if f == (i == 1 and "Best: " or "") .. zoneOf(i) then floor = k end
+                end
+                local idx = #forms
+                for k, f in ipairs(forms) do if f == text then idx = k break end end
+                if idx > floor and at_ then
+                    T.eq(at_, 3, tag .. ": the name is cut below its zone, so the price is at its shortest")
+                end
+                local tip = line.tip or {}
+                local function has(s)
+                    for _, t in ipairs(tip) do if t == s then return true end end
+                    return false
+                end
                 if text ~= forms[1] then
-                    T.eq(line.tip and line.tip[1], forms[1], tag .. ": the tooltip shows the full text")
-                else
+                    T.eq(tip[1], forms[1], tag .. ": the tooltip shows the full text")
+                end
+                if at_ and at_ > 1 then
+                    T.ok(has(prices[1]), tag .. ": the tooltip shows the full price")
+                end
+                if text == forms[1] and at_ == 1 then
                     T.eq(line.tip, nil, tag .. ": whole, no tooltip")
                 end
             end

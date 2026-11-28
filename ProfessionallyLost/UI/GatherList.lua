@@ -2106,8 +2106,17 @@ GatherList.FARM_NONE = "No goods to sell here for your skills"
 GatherList.FARM_BETTER = "Best farm: %s"
 GatherList.FARM_BETTER_SHORT = "Best: %s"   -- the Best farm lead when the full text does not fit
 GatherList.FARM_EACH = "%s ea (%s)"
+-- A price's forms, longest first. A narrow row takes the first one that leaves its name room.
+GatherList.FARM_PRICE_FORMS = { "%s ea (%s)", "%s (%s)", "%s" }
 GatherList.TAG_AH, GatherList.TAG_VENDOR = "AH", "Vendor"
 GatherList.FARM_NO_PRICE = "no price yet"
+
+-- The forms of one price ("46s ea (AH)", "46s (AH)", "46s"), longest first.
+function GatherList.PriceForms(value, tag)
+    local money, out = CP.Pricing.Format(value), {}
+    for i, f in ipairs(GatherList.FARM_PRICE_FORMS) do out[i] = f:format(money, tag) end
+    return out
+end
 
 -- What one `item` sells for: the auction price when it beats the vendor's, else the vendor's.
 -- Returns value, tag ("AH" or "Vendor"), stale, and the auction price's age in seconds. Both
@@ -2198,7 +2207,8 @@ function GatherList.FarmBetter(zone)
             local place, item = zoneName(found.zone), nameOf(c.item)
             out[#out + 1] = { text = ("%s (%s)"):format(place, item), zone = place, item = item,
                 zoneID = found.zone, itemID = c.item,
-                info = GatherList.FARM_EACH:format(CP.Pricing.Format(c.value), c.tag) }
+                prices = GatherList.PriceForms(c.value, c.tag) }
+            out[#out].info = out[#out].prices[1]
             old = older(old, c.age)
         end
     end
@@ -2274,7 +2284,8 @@ function GatherList.WorthLines(zone, items, skills)
         out[#out + 1] = { kind = "plan", indent = 30, textColor = S.color.text, itemID = g.item,
             text = iconText(g.item, nameOf(g.item)), pin = nav, click = nav, nav = { item = g.item, zone = zone },
             info = g.value and GatherList.FARM_EACH:format(CP.Pricing.Format(g.value), g.tag)
-                or GatherList.FARM_NO_PRICE }
+                or GatherList.FARM_NO_PRICE,
+            prices = g.value and GatherList.PriceForms(g.value, g.tag) or nil }
     end
     if better and #better > 0 then
         -- One row per zone, the lead on the first; the price sits in the info column like a material's.
@@ -2286,7 +2297,8 @@ function GatherList.WorthLines(zone, items, skills)
             out[#out + 1] = { kind = "plan", indent = 30, spotOf = lead, pin = nav, click = nav,
                 nav = { item = b.itemID, zone = b.zoneID },
                 fit = { zone = b.zone, item = b.item, lead = i == 1 },
-                text = i == 1 and GatherList.FARM_BETTER:format(b.text) or b.text, info = b.info }
+                text = i == 1 and GatherList.FARM_BETTER:format(b.text) or b.text, info = b.info,
+                prices = b.prices }
             lead = lead or out[#out]
         end
     elseif waiting then
@@ -2984,6 +2996,21 @@ local function wrapLine(out, line, room, info, indent)
     end
 end
 
+-- Picks the longest of `line.prices` that leaves the name's shortest form room beside it (a
+-- Best farm row's "Best: Zone", a Profit row's whole name), else the shortest price. Sets
+-- line.info and returns the price's full form when it was shortened.
+local function pickPrice(line, room)
+    local min = line.baseText
+    if line.fit then min = (line.fit.lead and GatherList.FARM_BETTER_SHORT or "%s"):format(line.fit.zone) end
+    local need = GatherList.Measure(min, "body")
+    local choice = line.prices[#line.prices]
+    for _, form in ipairs(line.prices) do
+        if need + GAP + GatherList.Measure(form, "small") <= room then choice = form break end
+    end
+    line.info = choice
+    return choice ~= line.prices[1] and line.prices[1] or nil
+end
+
 local function wrapAt(list, barShown)
     local out, width = {}, rowWidth(barShown)
     for _, line in ipairs(list) do
@@ -2991,14 +3018,25 @@ local function wrapAt(list, barShown)
         local indent = line.indent or INDENT[line.kind] or 50
         local done = line.kind == "item" and line.row and line.row.done
         local room = width - indent - (line.pin and PIN_W or done and CHECK_W or 0)
+        local priceTip
+        if line.prices then
+            line.baseText = line.baseText or line.text
+            line.text = line.baseText
+            priceTip = pickPrice(line, room)
+        end
         local info = line.info and line.info ~= "" and GatherList.Measure(line.info, "small") or 0
         if line.fit then
             -- One line by construction: the price keeps its column and the text fits beside it.
             local full
             line.text, full = GatherList.FarmFit(line.fit, room - GAP - info)
             line.tip = line.text ~= full and { full } or nil
+            if priceTip then
+                line.tip = line.tip or { full }
+                line.tip[#line.tip + 1] = priceTip
+            end
         else
             wrapLine(out, line, room, info, indent)
+            if line.prices then line.tip = priceTip and { priceTip } or nil end
         end
     end
     return out
