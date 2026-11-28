@@ -27,6 +27,7 @@ local function priced(priceFn, guide, item)
 end
 Solver.MIN_RUN = 3           -- a shorter run joins a neighbouring step that can carry it
 Solver.MAX_RESOLVES = 3      -- extra solves at most, each dropping coupled recipes that ended with no step
+local MISS_MAX = 1           -- points a sized-again maker row may play from its end (the rowpoints rule's slack)
 
 -- True when `r` is green at skill `s`: from the yellow-grey midpoint to grey, where a
 -- craft rarely gives a point (Prof.DifficultyAt's green).
@@ -457,6 +458,7 @@ local function settle(guide, skill, cap, picks, learned, usable, held, opts, hol
         end
         return false
     end
+
     local function trim(m)
         local M = guide.recipes[m.id]
         runs = runsOf()
@@ -499,14 +501,40 @@ local function settle(guide, skill, cap, picks, learned, usable, held, opts, hol
             if m.rareCap then n = math.min(n, m.rareCap) end
             return n
         end
-        local bestE, bestD
+        local bestE, bestD, missB
         for E = lo, b do
             local d = math.abs(Solver.Play(M, a, math.max(0, need(E) - done)) - E)
             if not bestD or d <= bestD then bestE, bestD = E, d end
+            if E == b then missB = d end
         end
         if bestE >= b then return end
+        local before
+        if nextMaker then
+            before = {}
+            for s = skill, cap - 1 do before[s] = picks[s] end
+        end
         for s = bestE, b - 1 do picks[s] = after end
-        if nextMaker then trim(nextMaker) end
+        if nextMaker then
+            trim(nextMaker)
+            -- Sizing the maker after it can change what its later runs use of this product. When that
+            -- leaves this run's count playing more than a point from its end, and worse than it did,
+            -- the picks go back to before this trim.
+            runs = runsOf()
+            local n = 0
+            for _, run in ipairs(runs) do
+                local k = run.id ~= m.id and run.to > bestE and usesOf(run.id, m.item)
+                if k then
+                    local c = G.Crafts(guide.recipes[run.id], math.max(run.from, bestE), run.to)
+                    if c < math.huge then n = n + c * k end
+                end
+            end
+            n = math.max(0, n - m.stock) / (M.yield or 1)
+            if m.rareCap then n = math.min(n, m.rareCap) end
+            local miss = math.abs(Solver.Play(M, a, math.max(0, n - done)) - bestE)
+            if miss > MISS_MAX and miss > missB then
+                for s = skill, cap - 1 do picks[s] = before[s] end
+            end
+        end
     end
     for i = #makers, 1, -1 do trim(makers[i]) end
 end
