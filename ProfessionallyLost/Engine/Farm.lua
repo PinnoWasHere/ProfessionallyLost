@@ -521,18 +521,18 @@ local function nearestCloth(item, level, side, only)
     return nil, { kind = "none" }
 end
 
--- Why the player can take none of `own` now: { kind = "level", need, name } when a creature
--- is too high for their level (the lowest level that reaches one), else
--- { kind = "skill", prof, need, have, name } (the lowest skill that takes one).
+-- Why the player can take none of `own` now: { kind = "level", need } when a creature is too
+-- high for their level (the lowest level that reaches one), else { kind = "skill", prof, need,
+-- have } (the lowest skill that takes one). Neither names a source.
 local function blocked(own, skills)
     local byLevel, bySkill
     for _, src in ipairs(own) do
         local have = skills[src.prof] or 0
         if src.prof == G.COOKING or have >= src.skill then
             local need = src.minLevel - G.FARM_SAFE_LEVELS
-            if not byLevel or need < byLevel.need then byLevel = { kind = "level", need = need, name = src.name } end
+            if not byLevel or need < byLevel.need then byLevel = { kind = "level", need = need } end
         elseif not bySkill or src.skill < bySkill.need then
-            bySkill = { kind = "skill", prof = src.prof, need = src.skill, have = have, name = src.name }
+            bySkill = { kind = "skill", prof = src.prof, need = src.skill, have = have }
         end
     end
     return byLevel or bySkill
@@ -543,10 +543,11 @@ end
 -- skill gathers, or cloth droppers (Gather.Cloth), in zones Farm.Best would send them to.
 -- The best spot of their own zone wins; with none there, the nearest spot of the
 -- NEAREST_ZONES nearest zones that have one.
--- `opts` (all optional): skills, level, side, and zone, which looks in that zone alone. Returns
+-- `opts` (all optional): skills, level, side, and zone, which looks in that zone alone and judges
+-- the level and skill by that zone's sources. Returns
 -- { zone, x, y, name, kind = "mob" | "node", low, high, chance or perKill (cloth), prof, spot },
--- or nil and why: nil when no source suits their professions, else { kind = "level", need, name },
--- { kind = "skill", prof, need, have, name } or { kind = "none" } (no zone has a spot).
+-- or nil and why: nil when no source suits their professions, else { kind = "level", need },
+-- { kind = "skill", prof, need, have } or { kind = "none" } (no zone has a spot).
 function Farm.Nearest(item, opts)
     opts = opts or {}
     local skills = opts.skills or G.Skills()
@@ -555,6 +556,14 @@ function Farm.Nearest(item, opts)
     if G.IsCloth(item) then return nearestCloth(item, level, side, opts.zone) end
     local own = ownSources(item, skills)
     if #own == 0 then return nil, nil end
+    if opts.zone then
+        local here = {}
+        for _, src in ipairs(own) do
+            if G.Holds(opts.zone, dataKind(src), src.entry) then here[#here + 1] = src end
+        end
+        if #here == 0 then return nil, { kind = "none" } end
+        own = here
+    end
     local now = {}
     for _, src in ipairs(own) do
         local skillOk = src.prof == G.COOKING or (skills[src.prof] or 0) >= src.skill

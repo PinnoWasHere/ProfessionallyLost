@@ -430,9 +430,9 @@ CP.GuideTab.NAV_MOB = "Level %s %s, %s, %s %s"     -- levels, creature, zone, ch
 CP.GuideTab.NAV_NODE = "%s, %s, %s %s"             -- node, zone, chance, item
 CP.GuideTab.NAV_CLOTH = "Level %s %s, %s, %s"      -- levels, creature, zone, cloth a kill
 CP.GuideTab.NAV_CLICK = "Click to set a waypoint there."
-CP.GuideTab.NAV_SKILL = "Needs %s %d for %s. You have %d."
-CP.GuideTab.NAV_LEVEL = "Needs level %d. %s is too high for you yet."
-CP.GuideTab.NAV_LEVEL_ANY = "Needs level %d. Its creatures are too high for you yet."
+CP.GuideTab.NAV_SKILL = "Needs %s %d for %s. You have %d."                     -- profession, skill, item
+CP.GuideTab.NAV_LEVEL = "No spot for %s at your level yet (needs level %d)."     -- item, level
+CP.GuideTab.NAV_LEVEL_IN = "No spot in %s for %s at your level yet (needs level %d)."   -- zone, item, level
 CP.GuideTab.NAV_NONE = "No place you can reach has enough of it."
 CP.GuideTab.NAV_LABEL = "%s: %s"                   -- item, creature or node
 
@@ -458,13 +458,16 @@ function CP.GuideTab.NavText(place, item)
     return G.NAV_NODE:format(place.name, zone, chance, name)
 end
 
--- Why Farm.Nearest found no place: its `why`.
-function CP.GuideTab.NavWhy(why)
+-- Why Farm.Nearest found no place for `item`: its `why`, in `zone` when the search looked there
+-- alone. It names the item and the zone, never a creature.
+function CP.GuideTab.NavWhy(why, item, zone)
     local G = CP.GuideTab
+    local name = item and (CP.ItemName(item) or ("item " .. tostring(item))) or "it"
     if why and why.kind == "skill" then
-        return G.NAV_SKILL:format(PROF_NAME[why.prof] or "skill", why.need, why.name, why.have)
+        return G.NAV_SKILL:format(PROF_NAME[why.prof] or "skill", why.need, name, why.have)
     elseif why and why.kind == "level" then
-        return why.name and G.NAV_LEVEL:format(why.need, why.name) or G.NAV_LEVEL_ANY:format(why.need)
+        if zone then return G.NAV_LEVEL_IN:format(zoneName(zone), name, why.need) end
+        return G.NAV_LEVEL:format(name, why.need)
     end
     return G.NAV_NONE
 end
@@ -475,7 +478,7 @@ function CP.GuideTab.MaterialWaypoint(item)
     if not item then return nil end
     local place, why = CP.Farm.Nearest(item)
     if not place then
-        CP:Print(CP.GuideTab.NavWhy(why))
+        CP:Print(CP.GuideTab.NavWhy(why, item))
         return nil
     end
     local name = CP.ItemName(item) or ("item " .. tostring(item))
@@ -492,7 +495,7 @@ function CP.GuideTab.MaterialTip(owner, item)
         GameTooltip:SetText(CP.GuideTab.NavText(place, item), 1, 1, 1, 1, true)
         GameTooltip:AddLine(CP.GuideTab.NAV_CLICK, nil, nil, nil, true)
     else
-        GameTooltip:SetText(CP.GuideTab.NavWhy(why), 1, 1, 1, 1, true)
+        GameTooltip:SetText(CP.GuideTab.NavWhy(why, item), 1, 1, 1, 1, true)
     end
     GameTooltip:Show()
 end

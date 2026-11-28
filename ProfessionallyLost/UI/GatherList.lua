@@ -2141,7 +2141,8 @@ end
 -- What the player can farm in `zone` with `skills`: { { item, value } }, most valuable first.
 -- `value` is one item's sale (SalePrice), nil when unknown; `tag` says which ("AH" or "Vendor"),
 -- `stale` that an auction price is old, `age` its age in seconds. The same goods Farm's sections
--- list: leathers, herbs and ore the skills reach, Cooking's goods, cloth and the fish in `items`.
+-- list: leathers, herbs and ore the skills reach, Cooking's goods a creature here drops as a grind
+-- spot counts it (Gather.GrindSource, as the row's pin finds it), cloth and the fish in `items`.
 function GatherList.FarmGoods(zone, items, skills)
     local seen, out = {}, {}
     local function add(item)
@@ -2161,7 +2162,14 @@ function GatherList.FarmGoods(zone, items, skills)
             if n.skill <= rank then add(n.item) end
         end
     end
-    for _, r in ipairs(Gather.CookRows(zone, skills, GatherList.ZONE_OPTS)) do add(r.itemID) end
+    for _, r in ipairs(Gather.CookRows(zone, skills, GatherList.ZONE_OPTS)) do
+        for _, src in ipairs(r.sources) do
+            if Gather.GrindSource(r.itemID, src) then
+                add(r.itemID)
+                break
+            end
+        end
+    end
     for _, c in ipairs(Gather.ClothRows(zone, nil, Gather.PlayerLevel(), UnitFactionGroup("player"))) do add(c.item) end
     for _, r in ipairs(items or {}) do
         if r.prof == Gather.FISHING and CP.Pricing.IsFish(r.itemID) and GatherList.Listed(r) then add(r.itemID) end
@@ -2230,16 +2238,16 @@ end
 function GatherList.FarmNav(item, zone)
     return function()
         local place, why = CP.Farm.Nearest(item, { zone = zone })
-        if not place then return CP:Print(GatherList.FarmNavWhy(why, zone)) end
+        if not place then return CP:Print(GatherList.FarmNavWhy(why, zone, item)) end
         placeAt(zone, place.x, place.y, CP.GuideTab.NAV_LABEL:format(nameOf(item), place.name))
     end
 end
 
--- Why Farm.Nearest found no spot for a row in `zone`: its `why`.
+-- Why Farm.Nearest found no spot for a row's `item` in `zone`: its `why`.
 GatherList.FARM_NAV_NONE = "No spot in %s has enough of it for you."
-function GatherList.FarmNavWhy(why, zone)
+function GatherList.FarmNavWhy(why, zone, item)
     if why and why.kind == "none" then return GatherList.FARM_NAV_NONE:format(zoneName(zone)) end
-    return CP.GuideTab.NavWhy(why)
+    return CP.GuideTab.NavWhy(why, item, zone)
 end
 
 -- `tip` (a row's own tooltip lines, or nil) and where the row's pin goes, or why it goes nowhere.
@@ -2252,7 +2260,7 @@ function GatherList.FarmNavTip(nav, tip)
         out[#out + 1] = CP.GuideTab.NavText(place, nav.item)
         out[#out + 1] = CP.GuideTab.NAV_CLICK
     else
-        out[#out + 1] = GatherList.FarmNavWhy(why, nav.zone)
+        out[#out + 1] = GatherList.FarmNavWhy(why, nav.zone, nav.item)
     end
     return out
 end
