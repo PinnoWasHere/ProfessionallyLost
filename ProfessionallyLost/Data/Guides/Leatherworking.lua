@@ -287,7 +287,7 @@ CP.Guides[165] = {
         [17011] = { 8000, false, nil, 7.1 },
         [17012] = { 4000, false, nil, 1.0, src = "skin 17012" },
         [19726] = { 2000, false, nil, 5.0, src = "node 19726" },
-        [19767] = { 8000, false, nil, 1.7 },
+        [19767] = { 8000, false, nil, 10.2, src = "skin 8170" },
         [19768] = { 8000, false, nil, 5.0, src = "skin 8170" },
     },
     -- crafted gear only an earlier step can supply
