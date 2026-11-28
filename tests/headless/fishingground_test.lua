@@ -1,7 +1,7 @@
 -- Fishing keeps to ground the character may stand on: the other faction's territory
--- (Gather.Territory, the Barrens for an Alliance angler) is left out while own or contested
--- water lands every bite as well (simulator finding, 2026-11-16: an Alliance angler sent to
--- the Barrens at skill 125).
+-- (Gather.EnemyGround, the Barrens for an Alliance angler) is never a water (simulator finding,
+-- 2026-11-16: an Alliance angler sent to the Barrens at skill 125; owner, 2026-11-27: "there's
+-- always an alternative spot").
 
 local CP = ProfLost
 local F, G, GG = CP.Fishing, CP.Gather, CP.GatherGuide
@@ -38,22 +38,15 @@ T.test("the Barrens stays the Horde's water from 75, and drops out of the Allian
     T.ok(#F.Candidates(125, 99, "Alliance") > 0, "the Alliance still has water at 125")
 end)
 
-T.test("a fish's water for the Cooking guide is on ground the character may stand on", function()
-    -- Every fish the Barrens' water holds, asked for by an Alliance angler at 125.
+T.test("a fish's water for the Cooking guide is never the other faction's territory", function()
+    -- Every fish the Barrens' water holds, asked for by an Alliance angler at 125, and by the Horde.
     local z = CP.GatherData.zones[BARRENS]
+    local horde = 0
     for _, l in ipairs(CP.GatherData.loot[z.fish.loot] or {}) do
         local w = F.WaterFor(l[1], 125, 60, "Alliance", nil, 1429)
-        if w and w.zone == BARRENS then
-            -- Only when no other water has that fish.
-            local other
-            for zone, oz in pairs(CP.GatherData.zones) do
-                if zone ~= BARRENS and oz.fish and not oz.inst and G.Territory(zone, "Alliance") ~= "enemy" then
-                    for _, ol in ipairs(CP.GatherData.loot[oz.fish.loot] or {}) do
-                        if ol[1] == l[1] and G.LandChance(125, oz.fish.base) > 0 then other = zone end
-                    end
-                end
-            end
-            T.eq(other, nil, ("item %d: the Barrens while zone %s has it"):format(l[1], tostring(other)))
-        end
+        T.ok(not (w and w.zone == BARRENS), ("item %d: the Barrens for the Alliance"):format(l[1]))
+        local h = F.WaterFor(l[1], 125, 60, "Horde", nil, 1411)
+        if h and h.zone == BARRENS then horde = horde + 1 end
     end
+    T.ok(horde > 0, "the Barrens stay the Horde's water")
 end)

@@ -16,10 +16,12 @@ local function showMap(id)
     end
 end
 
--- Scene: the player stands in Durotar (1411), level 20 Horde, with skinning and mining
--- needs. `act(seen)` runs with the pin calls recorded in `seen`.
-local function scene(act)
-    MapWorld.begin({ zone = 1411, x = 0.5, y = 0.5, level = 20, side = "Horde", shareSolves = true })
+-- Scene: the player stands in Durotar (1411), level 20 Horde (or `spec.zone` and `spec.side`), with
+-- skinning and mining needs. `act(seen)` runs with the pin calls recorded in `seen`.
+local function scene(act, spec)
+    spec = spec or {}
+    MapWorld.begin({ zone = spec.zone or 1411, x = 0.5, y = 0.5, level = 20, side = spec.side or "Horde",
+                     shareSolves = true })
     local was = { CP.db.otherZones, CP.db.route }
     CP.db.route = true
     CP.charDB.gatherNeeds = { [165] = { [2318] = 200 }, [164] = { [2771] = 100 } }
@@ -60,6 +62,16 @@ local function scene(act)
     -- Set back last: a redraw with the route on under this scene's map answers would cache them.
     CP.db.otherZones, CP.db.route = was[1], was[2]
     T.ok(ok, err)
+end
+
+-- How many Kalimdor zones an "Other zones" pass looks at for `side` standing in `here`: every
+-- zone with a size but theirs and the other faction's territory.
+local function lookable(side, here)
+    local n = 0
+    for _, z in ipairs(RM.ContinentZones(KALIMDOR)) do
+        if z ~= here and CP.Gather.ZoneSize(z) and not CP.Gather.EnemyGround(z, side) then n = n + 1 end
+    end
+    return n
 end
 
 -- The player's zone loop, as the gathering panel asks for it.
@@ -130,8 +142,20 @@ T.test("with other zones on, every continent zone with needs is solved, dimmed a
         end
         T.eq(RM.DIM, 0.7)
         T.ok(otherGrind > 0, "other zones' grind spots drawn")
-        T.ok(RM.lastPass.zones >= 20, "zones looked at: " .. RM.lastPass.zones)
+        T.eq(RM.lastPass.zones, lookable("Horde", 1411), "zones looked at: the continent's, less Alliance ground")
     end)
+end)
+
+-- Owner, 2026-11-27: "Enemy territory: there's always an alternative spot" (Gather.EnemyGround).
+T.test("other zones leave out the other faction's territory", function()
+    local horde = { [1411] = true, [1412] = true, [1413] = true, [1454] = true, [1456] = true }
+    scene(function()
+        CP.db.otherZones = true
+        update()
+        local others = RM.Others()
+        T.ok(#others >= 5, "zones solved: " .. table.concat(others, ","))
+        for _, z in ipairs(others) do T.ok(not horde[z], "an Alliance character's other zone is Horde ground: " .. z) end
+    end, { zone = 1440, side = "Alliance" })
 end)
 
 T.test("the shown map id changes nothing: zone map, continent map, another zone", function()
@@ -215,8 +239,8 @@ T.test("other zones solve a slice a frame, after the player's zone", function()
         end
         local pass = RM.lastPass
         T.ok(#RM.Others() > 0, "solved in the end, after " .. seconds .. " s")
-        T.ok(pass.zones >= 20 and pass.frames > pass.solved, ("%d zones, %d solved, %d frames"):format(
-            pass.zones, pass.solved, pass.frames))
+        T.ok(pass.zones == lookable("Horde", 1411) and pass.frames > pass.solved,
+            ("%d zones, %d solved, %d frames"):format(pass.zones, pass.solved, pass.frames))
         -- A slice ends at the first look past FRAME_MS (5 ms), give or take the few looks
         -- between ticks.
         T.ok(pass.longest < 10, ("longest slice %d looks"):format(pass.longest))

@@ -82,24 +82,25 @@ end
 
 -- Waters that land the most bites at `skill` (every bite once the skill allows; early on,
 -- the easiest waters), in `continent` when given, as { { zone, base, land } }. The other
--- faction's ground (Gather.Territory, as the other gathering guides weigh it) is left out
--- while own or contested water lands as well; with none, it stays, `enemy` set.
+-- faction's territory (Gather.EnemyGround) is left out. Contested ground it levels on
+-- (Gather.Territory "theirs") is left out while other water lands as well; with none, it
+-- stays, `theirs` set.
 local function waters(skill, level, side, here, continent, margin)
     local out, best, bestOk = {}, 0, 0
     for zone, z in pairs(CP.GatherData.zones) do
         if z.fish and reachable(zone, z, level, here, margin) and (not continent or z.map == continent)
-            and not CP.Gather.EnemyHome(zone, side) then
+            and not CP.Gather.EnemyGround(zone, side) then
             local land = CP.Gather.LandChance(skill, z.fish.base)
             if land > 0 then
-                local enemy = side ~= nil and CP.Gather.Territory(zone, side) == "enemy"
-                out[#out + 1] = { zone = zone, base = z.fish.base, land = land, enemy = enemy or nil }
+                local theirs = side ~= nil and CP.Gather.Territory(zone, side) == "theirs"
+                out[#out + 1] = { zone = zone, base = z.fish.base, land = land, theirs = theirs or nil }
                 best = math.max(best, land)
-                if not enemy then bestOk = math.max(bestOk, land) end
+                if not theirs then bestOk = math.max(bestOk, land) end
             end
         end
     end
     for i = #out, 1, -1 do
-        if out[i].land < best or (out[i].enemy and bestOk >= best) then table.remove(out, i) end
+        if out[i].land < best or (out[i].theirs and bestOk >= best) then table.remove(out, i) end
     end
     table.sort(out, function(a, b)
         if a.base ~= b.base then return a.base > b.base end
@@ -109,7 +110,7 @@ local function waters(skill, level, side, here, continent, margin)
 end
 
 -- The waters safe at `level` that land the most bites at `skill`, by fishing level,
--- highest first. `side` ("Alliance" or "Horde") skips the other faction's home zones.
+-- highest first. `side` ("Alliance" or "Horde") skips the other faction's territory.
 -- `here` (optional) is the player's zone, always safe. A character under
 -- GatherGuide.HOME_LEVEL below skill HOME_SKILL stays on `here`'s continent; with
 -- nothing in reach there, the margin widens as GatherGuide does, then the continent goes.
@@ -130,23 +131,23 @@ end
 -- The best water to catch `item` at `skill`: { zone, chance, land } or nil. Each
 -- water's chance of the fish times its land chance, discounted by the trip like
 -- Fishing.Plan (NEAR_YD away counts half). `distance(zone)` and `here` (the player's zone,
--- always safe; the game's by default) are optional. The other faction's ground counts only
--- when no other water has the fish.
+-- always safe; the game's by default) are optional. The other faction's territory never
+-- counts, and contested ground it levels on only when no other water has the fish.
 function Fishing.WaterFor(item, skill, level, side, distance, here)
-    local best, bestValue, enemyBest, enemyValue
+    local best, bestValue, theirsBest, theirsValue
     here = here or CP.Waypoint and CP.Waypoint.PlayerZone and CP.Waypoint.PlayerZone()
     for zone, z in pairs(CP.GatherData.zones) do
         if z.fish and not z.inst and reachable(zone, z, level, here, CP.GatherGuide.SAFE_LEVELS)
-            and not CP.Gather.EnemyHome(zone, side) then
-            local enemy = side ~= nil and CP.Gather.Territory(zone, side) == "enemy"
+            and not CP.Gather.EnemyGround(zone, side) then
+            local theirs = side ~= nil and CP.Gather.Territory(zone, side) == "theirs"
             local land = CP.Gather.LandChance(skill, z.fish.base)
             for _, l in ipairs(land > 0 and CP.GatherData.loot[z.fish.loot] or {}) do
                 if l[1] == item then
                     local d = distance and distance(zone) or 0
                     local value = l[2] * land / (1 + (d or 0) / Fishing.NEAR_YD)
                     local found = { zone = zone, chance = l[2], land = land }
-                    if enemy then
-                        if not enemyValue or value > enemyValue then enemyBest, enemyValue = found, value end
+                    if theirs then
+                        if not theirsValue or value > theirsValue then theirsBest, theirsValue = found, value end
                     elseif not bestValue or value > bestValue then
                         best, bestValue = found, value
                     end
@@ -154,7 +155,7 @@ function Fishing.WaterFor(item, skill, level, side, distance, here)
             end
         end
     end
-    return best or enemyBest
+    return best or theirsBest
 end
 
 -- Fish in `zone`'s water the Cooking guide still needs: { { item, chance, have, need } }.

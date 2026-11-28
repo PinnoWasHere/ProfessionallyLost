@@ -196,10 +196,11 @@ local SNAPSHOT = {
         .. " / source|#1| / source|#2| / source|#3| / section|Mining 120| / plan|Skill-ups|"
         .. " / source|Silver Vein|skill 75 · 9 nodes",
 }
--- Taken again 2026-11-24, when nodes above the player's skill left the map.
+-- Taken again 2026-11-24, when nodes above the player's skill left the map. The other faction's
+-- territory (Teldrassil, Darkshore) holds none.
 local FLOORS = {
     offMaps = { [1411] = 7, [1414] = 3 },
-    onMaps = { [1411] = 7, [1412] = 15, [1413] = 17, [1414] = 46, [1438] = 3, [1439] = 12, [1440] = 25,
+    onMaps = { [1411] = 7, [1412] = 15, [1413] = 17, [1414] = 40, [1440] = 25,
                [1441] = 22, [1442] = 16, [1443] = 14, [1444] = 3, [1445] = 22, [1448] = 19, [1452] = 10,
                [1454] = 3, [1456] = 3, [2652] = 3 },
 }

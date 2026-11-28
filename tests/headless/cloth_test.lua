@@ -76,19 +76,22 @@ T.test("a band more than three levels above the player does not count", function
     for _, s in ipairs(c.spots) do T.ok(s.lo <= 48, "each spot's creatures start at most 3 above") end
 end)
 
--- Owner, 2026-11-27: a faction's own NPCs are no farm for anyone (scripts/guidegen/farmable.py), so
--- Durotar's Kul Tiras marines, which only the Horde could kill, make no band.
-T.test("a faction's own NPCs make no cloth band for either side", function()
+-- Owner, 2026-11-27: "Enemy faction camps: yes" (the data build's farm rule), so Durotar's Kul Tiras
+-- camp bands for the Horde alone.
+T.test("an enemy camp's cloth band is the side's it is hostile to", function()
     scene({ zone = DUROTAR, level = 5 })
     local bands = CP.GatherData.zones[DUROTAR].cloth[LINEN]
     for _, b in ipairs(bands) do
-        T.ok(b[9] == nil or b[9] == "", "a band only one side may kill: " .. tostring(b[9]))
+        T.ok(b[9] == nil or b[9] == "H", "a Durotar band the Alliance alone may kill: " .. tostring(b[9]))
         T.eq(#b[7], #G.Decode(b[6]), "one lead creature and level span per spot")
-        for _, lead in ipairs(b[7]) do T.ok(not tostring(lead[1]):find("Kul Tiras", 1, true), tostring(lead[1])) end
+        for _, lead in ipairs(b[7]) do
+            if tostring(lead[1]):find("Kul Tiras", 1, true) then T.eq(b[9], "H", tostring(lead[1])) end
+        end
     end
     for _, level in ipairs({ 5, 12 }) do
-        T.eq(G.Cloth(DUROTAR, LINEN, level, "Alliance") ~= nil, G.Cloth(DUROTAR, LINEN, level, "Horde") ~= nil,
-            "both sides see the same Linen there at level " .. level)
+        local h, a = G.Cloth(DUROTAR, LINEN, level, "Horde"), G.Cloth(DUROTAR, LINEN, level, "Alliance")
+        T.ok(h ~= nil, "the Horde has Durotar's Linen at level " .. level)
+        T.ok((h and h.kills or 0) > (a and a.kills or 0), "the camp's spawns count for the Horde alone at " .. level)
     end
 end)
 

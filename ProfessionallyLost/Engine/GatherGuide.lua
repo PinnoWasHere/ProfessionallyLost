@@ -48,8 +48,9 @@ local LEVEL_STRETCH = 25 -- skill points the player's current level caps zones a
 local RANK_NAMES = { [75] = "Journeyman", [150] = "Expert", [225] = "Artisan" }
 local VERB = { [182] = "Pick", [186] = "Mine", [393] = "Skin" }
 -- A zone's score by whose ground it is: the player's own side first, contested next,
--- the other side's levelling zones only when nothing else comes close.
-local GROUND = { own = 1, contested = 0.6, enemy = 0.25 }
+-- contested ground the other side levels on only when nothing else comes close. The other
+-- side's territory is never a zone (Gather.EnemyGround).
+local GROUND = { own = 1, contested = 0.6, theirs = 0.25 }
 
 GG.LINES = { [182] = true, [186] = true, [393] = true, [356] = true }
 
@@ -145,7 +146,7 @@ function GG.Sources(line)
         local skins = CP.GatherData.Index("skins")
         for i = 1, #skins, 5 do
             local entry = skins[i]
-            if G.Skinnable(entry) then
+            if G.Gives(entry, G.SKINNING) then
                 local level = math.floor((skins[i + 2] + skins[i + 3]) / 2)
                 out[#out + 1] = { kind = "mobs", entry = entry, name = skins[i + 1], req = G.CorpseSkill(level),
                                   level = level, loot = skins[i + 4] }
@@ -342,7 +343,7 @@ end
 -- skill-up chance, so a dense small zone beats a big sparse one.
 -- `level` (optional) drops zones above the player and, for Skinning, creatures too
 -- strong; `continent` (optional) keeps zones on that continent. `side` ("Alliance" or
--- "Horde", optional) skips the other faction's home zones. `here` (optional) is the
+-- "Horde", optional) skips the other faction's territory. `here` (optional) is the
 -- player's zone; GG.START_ONLY zones are offered only from there. `margin` (optional)
 -- replaces the GG.SAFE_LEVELS the zone and creature levels may top the player's by.
 function GG.Zones(line, skill, level, continent, side, fitLevel, left, here, margin)
@@ -350,7 +351,7 @@ function GG.Zones(line, skill, level, continent, side, fitLevel, left, here, mar
     local onStart = here and GG.START_ONLY[here]
     for zone, list in pairs(inZones(line)) do
         local z = CP.GatherData.zones[zone]
-        if not SKIP[zone] and (onStart or not GG.START_ONLY[zone]) and not z.inst and not G.EnemyHome(zone, side) and safe(zone, level, here, margin)
+        if not SKIP[zone] and (onStart or not GG.START_ONLY[zone]) and not z.inst and not G.EnemyGround(zone, side) and safe(zone, level, here, margin)
             and not (continent and z.map ~= continent) then
             local score, total, targets, plain, ups, all, nodes = 0, 0, {}, false, 0, 0, false
             for _, p in ipairs(list) do

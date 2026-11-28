@@ -777,7 +777,8 @@ local function dropOthers()
     end
 end
 
--- Solve every other zone on the player's continent, unless nothing they depend on changed.
+-- Solve every other zone on the player's continent but the other faction's territory, unless
+-- nothing they depend on changed.
 -- A zone's loop is kept by its key, so a pass re-solves only the zones whose rows changed.
 local function solveOthers()
     if not RouteMap.OthersOn() then return dropOthers() end
@@ -814,9 +815,11 @@ local function solveOthers()
         CP.Gather.JobTick(light)
         local keep = {}
 
-        -- The listed zone and the player's own zone each have a slot of their own.
+        -- The listed zone and the player's own zone each have a slot of their own. The other
+        -- faction's territory gets none.
+        local side = UnitFactionGroup("player")
         for _, z in ipairs(zones) do
-            if z ~= here.asked and z ~= zone and CP.Gather.ZoneSize(z) then
+            if z ~= here.asked and z ~= zone and CP.Gather.ZoneSize(z) and not CP.Gather.EnemyGround(z, side) then
                 stats.zones = stats.zones + 1
                 local rows = GL.RouteRows(z, nil, true, GL.OTHER_OPTS)
                 tick()

@@ -3,7 +3,7 @@
 -- for you yet."; "I don't want to see farmable NPCs like this. Enemy mobs are fine. But Undercity?
 -- Stormwind?"). Quinard is an Undercity NPC (faction template 68) whose loot gives Sungrass at 31.5%.
 -- The data leaves out faction NPCs, quest and event NPCs, bosses and rares
--- (scripts/guidegen/farmable.py), and a why text names the item and the zone, never a creature.
+-- (the data build's farm rule), and a why text names the item and the zone, never a creature.
 -- Real generated data.
 
 local CP = ProfLost
@@ -76,9 +76,17 @@ end
 
 T.test("the data holds no faction NPC, boss or rare as a farm", function()
     local mobs = CP.GatherData.mobs
-    for _, e in ipairs({ QUINARD, KIRIKA, BLUEWALL, TORTA, ONYXIA }) do
+    for _, e in ipairs({ KIRIKA, BLUEWALL, TORTA, ONYXIA }) do
         T.eq(mobs[e], nil, "creature " .. e .. " is no farm")
     end
+end)
+
+T.test("Quinard, a Forsaken NPC out in Silithus, is the Alliance's farm alone", function()
+    T.eq(CP.GatherData.sides[QUINARD], "A", "hostile to the Alliance only (owner, 2026-11-27: enemy faction camps)")
+    MapWorld.begin({ zone = TANARIS, side = "Horde", level = 60 })
+    T.eq(G.Gives(QUINARD, COOK), false, "the Horde never farms him")
+    MapWorld.begin({ zone = TANARIS, side = "Alliance", level = 60 })
+    T.eq(G.Gives(QUINARD, COOK), true)
 end)
 
 T.test("Tanaris, Horde skinner with Cooking at 48: Profit lists no Sungrass", function()
