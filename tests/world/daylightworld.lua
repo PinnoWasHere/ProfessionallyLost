@@ -94,6 +94,20 @@ local function handle(event, fn)
     return h
 end
 
+-- Plugin.Start adds CP:On handlers (PLAYER_LOGIN places the movers through the stand-in). They outlive
+-- the test, so a later test that plays a login would put Daylight UI's mover in charge of the window.
+-- Every handler added from here to the test's end is dropped at its end.
+function DaylightWorld.ForgetHandlers()
+    local on, added = CP.On, {}
+    World.set(CP, "On", function(self, event, fn)
+        added[#added + 1] = { event, fn }
+        return on(self, event, fn)
+    end)
+    World.onEnd(function()
+        for _, h in ipairs(added) do CP:Off(h[1], h[2]) end
+    end)
+end
+
 -- Calls every handler of `event`, Daylight UI's events to plugins.
 function DaylightWorld.Fire(event, ...)
     for _, h in ipairs(S.handlers) do
@@ -646,6 +660,7 @@ function DaylightWorld.begin(spec)
         -- The plugin view and API Plugin.Start hands to Host go back to what they were.
         World.set(CP.Host.view, "me", CP.Host.view.me)
         World.set(CP.Host.view, "api", CP.Host.view.api)
+        DaylightWorld.ForgetHandlers()
         CP.Plugin.Start()
         World.onEnd(function()
             -- What Plugin.Start handed to ProfLost's other modules goes back to no Daylight UI.

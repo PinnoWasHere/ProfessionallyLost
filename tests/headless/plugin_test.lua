@@ -8,6 +8,7 @@ local function standIn(saved)
     -- Plugin.Start hands the stand-in's view and API to Host; the test's end puts them back.
     World.set(CP.Host.view, "me", CP.Host.view.me)
     World.set(CP.Host.view, "api", CP.Host.view.api)
+    DaylightWorld.ForgetHandlers()
     local rec ={ plugins = {}, modules = {}, handlers = {}, movers = {}, fades = {}, commands = {} }
     local me = {
         On = function(event, fn) rec.handlers[event] = fn end,
@@ -280,4 +281,23 @@ T.test("the font setting puts Daylight UI's chosen font on ProfLost's text", fun
     fs.GetFont, fs.SetFont = nil, nil
     S.Daylight, CP.db.font = daylight, font
     T.ok(ok, err)
+end)
+
+-- Plugin.Start's PLAYER_LOGIN handler goes with the test that started it. Left behind, it put
+-- Daylight UI's mover in charge of the window for every later file (idle_test saw windowAnchorSize
+-- written by Window.Fit).
+T.test("a login after a plugin test leaves the window mover off", function()
+    World.set(CP.Window.managed, "mover", false)
+    World.set(CP.GatherPanel.managed, "mover", false)
+    for _, anchor in ipairs({ CP.Window.anchor, CP.GatherPanel.anchor }) do
+        local points = {}
+        for i = 1, anchor:GetNumPoints() do points[i] = { anchor:GetPoint(i) } end
+        World.onEnd(function()
+            anchor:ClearAllPoints()
+            for _, pt in ipairs(points) do anchor:SetPoint(unpack(pt)) end
+        end)
+    end
+    T.fire("PLAYER_LOGIN")
+    T.advance(7)   -- the login's own delayed work (news, price ask) runs inside this test
+    T.ok(not CP.Window.managed.mover, "no Daylight UI is loaded, so no mover places the window")
 end)
