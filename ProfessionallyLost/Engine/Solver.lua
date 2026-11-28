@@ -111,6 +111,80 @@ function Solver.CraftCost(guide, recipe, priceFn)
     return billSum(bill), missing
 end
 
+-- The prices and credit each per-craft cost table came from (Solver.Priced), weak by table.
+local pricing = setmetatable({}, { __mode = "k" })
+
+-- Marks `cost` (recipe -> cost of one craft) as priced by `priceFn`, with `credit` (as Solver.Plan's
+-- opts.credit) applied, so Solver.RouteTotal can price a route item by item. Returns `cost`.
+function Solver.Priced(cost, priceFn, credit)
+    pricing[cost] = { price = priceFn, credit = credit }
+    return cost
+end
+
+-- A recipe that makes craft-only gear `item`, the lowest id when several do.
+local function gearMaker(guide, item)
+    local best
+    for id, r in pairs(guide.recipes) do
+        if r.makes == item and (not best or id < best) then best = id end
+    end
+    return best and guide.recipes[best]
+end
+
+-- What a route costs with each item counted once, at the prices `cost` came from. `list` holds the
+-- route's steps in order, each { spell, crafts, paid }. A step pays its own materials. A prep or
+-- craft-only product comes first from what earlier steps made, and the rest costs what making it
+-- takes. A step with `paid` false (a locked one) adds its output and takes its share but costs
+-- nothing. A credit (Enchanting's) is sized on the step's whole materials, as the solve sizes it,
+-- and taken off what the step pays. Nil when `cost` carries no prices (Solver.Priced).
+function Solver.RouteTotal(guide, list, cost)
+    local how = pricing[cost]
+    if not how then return nil end
+    local priceFn, credit = how.price, how.credit
+    local prep, craftOnly = guide.prep or {}, guide.craftOnly or {}
+    local supply, total, own, whole = {}, 0, newBill(), newBill()
+
+    -- Adds `n` of `item` to `bill`; with `take`, what earlier steps made comes first and free.
+    local function add(bill, item, n, depth, take)
+        local made = prep[item] or craftOnly[item]
+        if made and take then
+            local got = math.min(supply[item] or 0, n)
+            supply[item] = (supply[item] or 0) - got
+            n = n - got
+        end
+        if n <= 1e-9 then return end
+        local maker = made and depth < PREP_DEPTH
+            and (prep[item] and guide.recipes[prep[item]] or craftOnly[item] and gearMaker(guide, item))
+        if maker then
+            local runs = n / (maker.yield or 1)
+            for _, pair in ipairs(maker.reagents) do add(bill, pair[1], pair[2] * runs, depth + 1) end
+            return
+        end
+        local info = guide.items and guide.items[item]
+        local _, way = priceFn(item, info)
+        billAdd(bill, priced(priceFn, guide, item) * n, shareOf(way, info))
+    end
+
+    for _, st in ipairs(list) do
+        local r = guide.recipes[st.spell]
+        billClear(own)
+        for _, pair in ipairs(r.reagents) do add(own, pair[1], pair[2] * st.crafts, 0, true) end
+        if st.paid and st.crafts > 0 then
+            local pays = billSum(own)
+            if credit then
+                billClear(whole)
+                for _, pair in ipairs(r.reagents) do add(whole, pair[1], pair[2], 0) end
+                local each = billSum(whole)
+                pays = pays - (each - credit(st.spell, r, each)) * st.crafts
+            end
+            total = total + pays
+        end
+        if r.makes and (prep[r.makes] or craftOnly[r.makes]) then
+            supply[r.makes] = (supply[r.makes] or 0) + st.crafts * (r.yield or 1)
+        end
+    end
+    return total
+end
+
 -- True when every material of `a` is also a material of `b`.
 local function usesOnly(a, b)
     local has = {}
@@ -159,7 +233,8 @@ end
 -- Grows each maker's run in `picks` to the end its whole count reaches, played from its start. The
 -- count is what later runs use of its product, less the bags. Makers settle lowest start first, and a
 -- run only grows. A fixed point, the held current step and a pick that makes craft-only gear are
--- never overwritten; the maker's rest settles again past such a block. `usable(id)` says whether
+-- never overwritten; the maker's rest settles again past such a block. Then each maker is sized
+-- again on the final picks, down to no less than the pick loop's own run. `usable(id)` says whether
 -- the player can craft maker `id`.
 local function settle(guide, skill, cap, picks, learned, usable, held, opts, holdId, holdEnd)
     local G = CP.Guide
@@ -224,6 +299,7 @@ local function settle(guide, skill, cap, picks, learned, usable, held, opts, hol
         for _, run in ipairs(runs) do
             if run.id == m.id and run.to > floor then
                 s0, firstEnd = math.max(run.from, floor), run.to
+                m.own = run.to
                 break
             end
         end
@@ -261,6 +337,7 @@ local function settle(guide, skill, cap, picks, learned, usable, held, opts, hol
                     if c < math.huge then stock = math.max(0, stock - c * k) end
                 end
             end
+            m.stock, m.rareCap, m.settled = stock, rareCap, true
             local function need(E)
                 local n = 0
                 for _, run in ipairs(runs) do
@@ -310,6 +387,75 @@ local function settle(guide, skill, cap, picks, learned, usable, held, opts, hol
             end
         end
     end
+
+    -- A later maker's settle can take points from an earlier maker's consumers, so their need falls
+    -- after the earlier maker was sized. Each maker is sized again on the final picks, latest first,
+    -- and its last run gives its top points to the run after it. A run never ends below the pick
+    -- loop's own run of the maker, so no second run is left behind it. A fixed point, the held step
+    -- and a run after it that makes or uses craft-only gear stay as they are. A maker run after it
+    -- that takes points now starts lower, so it is sized again too.
+    local byId = {}
+    for _, m in ipairs(makers) do byId[m.id] = m end
+    local function gear(id)
+        local r = guide.recipes[id]
+        if r.makes and craftOnly[r.makes] then return true end
+        for _, pair in ipairs(r.reagents) do
+            if craftOnly[pair[1]] then return true end
+        end
+        return false
+    end
+    local function trim(m)
+        local M = guide.recipes[m.id]
+        runs = runsOf()
+        local last, done = nil, 0
+        for _, run in ipairs(runs) do
+            if run.id == m.id then
+                if last then done = done + craftsBetween(M, last.from, last.to) end
+                last = run
+            end
+        end
+        local a, b = last and last.from, last and last.to
+        local after = b and b < cap and picks[b]
+        local F = after and guide.recipes[after]
+        if not (m.settled and F and done < math.huge and not gear(after) and not fixed[b] and not cuts[b]
+            and not (m.own and m.own >= b)) then return end
+        local nextMaker = F.makes and prep[F.makes] and byId[after]
+        if F.makes and prep[F.makes] and not (nextMaker and nextMaker.settled) then return end
+        -- The lowest point the run after can take over.
+        local low = b
+        while low > a do
+            local s = low - 1
+            local free = not fixed[s] and not (holdId and s < holdEnd)
+                and (learned[after] or F.learn <= s) and G.Chance(F, s) > 0
+                and not (isGreen(F, s) and not isGreen(M, s))
+            if not free then break end
+            low = s
+        end
+        local lo = math.max(low, m.own and m.own > a and m.own or a)
+        local function need(E)
+            local n = 0
+            for _, run in ipairs(runs) do
+                local k = run.id ~= m.id and run.to > E and usesOf(run.id, m.item)
+                if k then
+                    local from = (run.from == b and run.id == after) and E or math.max(run.from, E)
+                    local c = G.Crafts(guide.recipes[run.id], from, run.to)
+                    if c < math.huge then n = n + c * k end
+                end
+            end
+            n = math.max(0, n - m.stock) / (M.yield or 1)
+            if m.rareCap then n = math.min(n, m.rareCap) end
+            return n
+        end
+        local bestE, bestD
+        for E = lo, b do
+            local d = math.abs(Solver.Play(M, a, math.max(0, need(E) - done)) - E)
+            if not bestD or d <= bestD then bestE, bestD = E, d end
+        end
+        if bestE >= b then return end
+        for s = bestE, b - 1 do picks[s] = after end
+        if nextMaker then trim(nextMaker) end
+    end
+    for i = #makers, 1, -1 do trim(makers[i]) end
 end
 
 -- A step makes first what stock and earlier steps leave short of a prep material no earlier step
@@ -787,7 +933,7 @@ local function solve(guide, skill, learned, priceFn, allow, prefer, held, opts, 
     if Solver.SETTLE ~= false then madeFirst(guide, steps, held, fixed) end
     -- Guide.SplitAtCaps reads it to place the trainer visits.
     steps.learned = learned
-    return steps, cost, picked
+    return steps, Solver.Priced(cost, priceFn, credit), picked
 end
 
 function Solver.Plan(guide, skill, learned, priceFn, allow, prefer, held, opts)
