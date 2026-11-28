@@ -86,14 +86,11 @@ function Sourcing.GatherSkill(guide, itemID)
     return nil
 end
 
--- Smelted bars: Metal & Stone that no node gives. The data holds no smelting skills, so Mining
--- makes them at any rank.
-local METAL_STONE = 7
-
 -- A gathering profession's reach as the player stands (owner, 2026-11-27): `line` gets `itemID`
 -- only once a source the data holds takes their rank, and, with `level`, sits where they may farm
--- (Farm.Reaches). `ranks` is skill line -> rank (Gather.Skills); a line with no rank read is not
--- judged. Returns reach(line, itemID) for CanGet.
+-- (Farm.Reaches). Mining gets a smelted bar only once it mines the ore and knows or may learn the
+-- smelt at its rank (Farm.Smelts). `ranks` is skill line -> rank (Gather.Skills); a line with no
+-- rank read is not judged. Returns reach(line, itemID) for CanGet.
 function Sourcing.Reach(ranks, level)
     local memo = {}
     return function(line, itemID)
@@ -105,8 +102,7 @@ function Sourcing.Reach(ranks, level)
             if CP.Farm.Reach(itemID, line) then
                 ok = CP.Farm.Reaches(itemID, line, rank, level)
             else
-                local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
-                ok = line == CP.Gather.MINING and classID == TRADE_GOODS and subclassID == METAL_STONE
+                ok = line == CP.Gather.MINING and CP.Farm.Smelts(itemID, rank, level)
             end
             memo[key] = ok
         end

@@ -62,11 +62,12 @@ local cache = {}
 local itemLists = {}   -- Farm.Items' answers by key
 local job, generation, wanted = nil, 0, nil
 local reach, nodeLevels   -- Farm.Reach's answers and the node levels it reads
+local smeltsBy            -- item -> the smelts that make it (Farm.SmeltsOf)
 
 function Farm.Reset()
     wipe(cache)
     wipe(itemLists)
-    index, reach, nodeLevels = nil, nil, nil
+    index, reach, nodeLevels, smeltsBy = nil, nil, nil, nil
     job, wanted = nil, nil
     generation = generation + 1
 end
@@ -370,6 +371,70 @@ function Farm.Reaches(item, line, rank, level)
         if rank >= src.skill and (not level or src.level <= level + G.FARM_SAFE_LEVELS) then return true end
     end
     return false
+end
+
+-- Smelting: Mining's recipes (GatherData.smelt) ------------------------------------
+
+-- The smelts that make `item`: { { spell, r = recipe } }, lowest learn first, or nil.
+function Farm.SmeltsOf(item)
+    if not smeltsBy then
+        smeltsBy = {}
+        for spell, r in pairs(CP.GatherData and CP.GatherData.smelt or {}) do
+            local list = smeltsBy[r.makes] or {}
+            smeltsBy[r.makes] = list
+            list[#list + 1] = { spell = spell, r = r }
+        end
+        for _, list in pairs(smeltsBy) do
+            table.sort(list, function(a, b)
+                local la, lb = a.r.learn or math.huge, b.r.learn or math.huge
+                if la ~= lb then return la < lb end
+                return a.spell < b.spell
+            end)
+        end
+    end
+    return smeltsBy[item]
+end
+
+-- True when the player knows smelt `spell` already.
+local function knows(spell) return CP.Professions and CP.Professions.Holds(spell) or false end
+
+-- True when Mining at `rank` makes `item` by smelting: a smelt that makes it is known, or learned
+-- at or under the rank (and, with `level`, its quest's level reached), and every reagent is a
+-- vendor good (`buy`), a bar judged the same way, or an ore the rank mines (Farm.Reaches).
+function Farm.Smelts(item, rank, level, depth)
+    depth = depth or 0
+    for _, s in ipairs(Farm.SmeltsOf(item) or {}) do
+        local r = s.r
+        local learnable = r.learn and rank >= r.learn and not (level and r.level and level < r.level)
+        if learnable or knows(s.spell) then
+            local buy, ok = {}, true
+            for _, b in ipairs(r.buy or {}) do buy[b] = true end
+            for _, pair in ipairs(r.reagents) do
+                local reagent = pair[1]
+                if not buy[reagent] then
+                    if Farm.Reach(reagent, G.MINING) then
+                        ok = Farm.Reaches(reagent, G.MINING, rank, level)
+                    else
+                        ok = depth < 3 and Farm.SmeltsOf(reagent) ~= nil and Farm.Smelts(reagent, rank, level, depth + 1)
+                    end
+                end
+                if not ok then break end
+            end
+            if ok then return true end
+        end
+    end
+    return false
+end
+
+-- The known smelts that no source teaches (no `learn`, Smelt Elementium), as a string: the rank
+-- alone can't say whether they are in reach, so Plan.ReachKey reads this too.
+function Farm.SmeltKey()
+    local out = {}
+    for spell, r in pairs(CP.GatherData and CP.GatherData.smelt or {}) do
+        if not r.learn and knows(spell) then out[#out + 1] = spell end
+    end
+    table.sort(out)
+    return table.concat(out, ",")
 end
 
 local function dataKind(src) return src.kind == "mob" and "mobs" or "nodes" end

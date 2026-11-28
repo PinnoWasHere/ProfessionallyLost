@@ -118,15 +118,53 @@ T.test("Mining and Fishing reach by node skill and water", function()
     T.eq(F.Reach(2840, MINING), nil, "no node gives a Copper Bar")
 end)
 
-T.test("a smelted bar counts with Mining at any rank; a leather no creature skins never counts", function()
+T.test("a leather no creature skins never counts", function()
     World.patch("C_Item.GetItemInfoInstant", function(id)
-        if id == 2840 then return id, "", "", "", 0, 7, 7 end
         if id == 4461 then return id, "", "", "", 0, 7, 6 end
         return id, "", "", "", 0, 15, 0
     end)
-    local reach = CP.Sourcing.Reach({ [186] = 1, [393] = 300 }, 60)
-    T.ok(reach(186, 2840), "Copper Bar: smelted, the data holds no smelting skill")
-    T.ok(not reach(393, 4461), "Raptor Hide: no creature skins it")
+    T.ok(not CP.Sourcing.Reach({ [393] = 300 }, 60)(393, 4461), "Raptor Hide: no creature skins it")
+end)
+
+-- A bar counts only once Mining mines its ore and smelts it. Client SkillLineAbility and cMaNGOS
+-- trainer rows: Smelt Copper is learned with Mining, Smelt Tin and Smelt Bronze at 65 (Tin Vein 65),
+-- Smelt Iron at 125 (Iron Deposit 125), Smelt Steel at 165 (Iron Bar and Coal, which vendors sell),
+-- Smelt Mithril at 175. Gloom'rel teaches Smelt Dark Iron at 230 once quest 4083 (level 40) is done.
+T.test("a smelted bar counts only once Mining mines the ore and may learn the smelt", function()
+    local MINING = 186
+    local function at(rank, level, bar) return CP.Sourcing.Reach({ [MINING] = rank }, level)(MINING, bar) end
+    T.ok(at(1, 60, 2840), "Copper Bar at Mining 1")
+    T.ok(not at(64, 60, 3576) and at(65, 60, 3576), "Tin Bar from Mining 65")
+    T.ok(not at(64, 60, 2841) and at(65, 60, 2841), "Bronze Bar from Mining 65, Copper and Tin Bars both in reach")
+    T.ok(not at(124, 60, 3575) and at(125, 60, 3575), "Iron Bar from Mining 125")
+    T.ok(not at(164, 60, 3859) and at(165, 60, 3859), "Steel Bar from Mining 165: Iron Bar smelted, Coal bought")
+    T.ok(not at(174, 60, 3860) and at(175, 60, 3860), "Mithril Bar from Mining 175")
+    T.ok(not at(229, 60, 11371), "Dark Iron Bar: Smelt Dark Iron is taught at 230")
+    T.ok(not at(230, 39, 11371), "Dark Iron Bar: Smelt Dark Iron's quest asks level 40")
+    T.ok(at(300, 60, 11371), "Dark Iron Bar at Mining 300, level 60")
+    T.ok(not at(300, 60, 17771), "Elementium Bar: no source teaches Smelt Elementium")
+end)
+
+T.test("Blacksmithing with Mining 100 plans no Iron Bar step on Mining", function()
+    local BS, MINING, IRON = 164, 186, 3575
+    World.patch("C_Item.GetItemInfoInstant", function(id)
+        if CP.Farm.SmeltsOf(id) or CP.Farm.Reach(id, MINING) then return id, "", "", "", 0, 7, 7 end
+        return id, "", "", "", 0, 15, 0
+    end)
+    local guide = CP.Guides[BS]
+    local skills = { [BS] = true, [MINING] = true }
+    local function lets(rank)
+        local allow = CP.Sourcing.Filter(guide, {}, true, skills, CP.Sourcing.Reach({ [MINING] = rank }, 60))
+        local n = 0
+        for id, r in pairs(guide.recipes) do
+            local iron = false
+            for _, pair in ipairs(r.reagents) do if pair[1] == IRON then iron = true end end
+            if iron and not guide.items[IRON][2] and allow(id, r) then n = n + 1 end
+        end
+        return n
+    end
+    T.eq(lets(100), 0, "no recipe that asks Iron Bar at Mining 100")
+    T.ok(lets(125) > 0, "Iron Bar recipes come in at Mining 125")
 end)
 
 T.test("the reach key reads every gathered material of the guide", function()
