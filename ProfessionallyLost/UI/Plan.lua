@@ -840,24 +840,30 @@ function Plan.Locks(c, guide, skill, learned, dead)
     return locks
 end
 
--- What the unlocked steps of `steps` cost from `skill`, at the per-craft costs `costs`
--- (Solver.Plan's second answer), and the skill points they cover. The cost is nil when one of
--- them can't be done: no cost known now, or not doable as Plan.Doable reads it (with `learned`,
--- a recipe not known that can't be learned there yet too).
+-- What the unlocked steps of `steps` cost from `skill`, at the prices behind `costs` (Solver.Plan's
+-- second answer), and the skill points they cover. Each item counts once (Solver.RouteTotal): a
+-- maker row pays its materials, and later steps take its output for free. Locked steps cost nothing
+-- but still supply and use. A bare cost table, with no prices behind it, prices each craft at its
+-- cost. The cost is nil when an unlocked step can't be done: no cost known now, or not doable as
+-- Plan.Doable reads it (with `learned`, a recipe not known that can't be learned there yet too).
 function Plan.RouteCost(guide, steps, skill, costs, dead, learned)
-    local total, points = 0, 0
+    local list, plain, points = {}, 0, 0
     for _, st in ipairs(steps or {}) do
-        if st.spell and st.to > skill and not st.locked then
+        if st.spell and st.to > skill then
             local from = math.max(st.from, skill)
             local r = guide.recipes[st.spell]
-            local each = costs and costs[st.spell]
             local crafts = r and CP.Guide.Crafts(r, from, st.to) or math.huge
-            if not each or crafts == math.huge or not doable(guide, st.spell, from, learned, dead) then return nil, points end
-            total = total + each * crafts
-            points = points + (st.to - from)
+            if not st.locked then
+                local each = costs and costs[st.spell]
+                if not each or crafts == math.huge or not doable(guide, st.spell, from, learned, dead) then return nil, points end
+                plain = plain + each * crafts
+                points = points + (st.to - from)
+            end
+            if crafts < math.huge then list[#list + 1] = { spell = st.spell, crafts = crafts, paid = not st.locked } end
         end
     end
-    return total, points
+    local total = costs and CP.Solver.RouteTotal(guide, list, costs)
+    return total or plain, points
 end
 
 -- True when route `new` replaces the shown route `old` (both plan steps from `skill`, locked

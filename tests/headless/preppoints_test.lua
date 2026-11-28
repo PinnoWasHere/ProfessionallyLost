@@ -3,8 +3,9 @@
 -- 138 bolts carry the skill to 85; with Enchanting it read "Woolen Cape 67-97 ~36" with no bolt row.
 -- Both read a bolt row, then the capes. Wool Cloth is a creature drop (4.7 effort a cloth, not the
 -- 3.5 of the skin it was once read as), so Reinforced Linen Cape covers 67-73 and the bolt row starts
--- at 73. Alone it runs 73-84, makes 32 and keeps 28 for the capes and shoulders. With Enchanting it
--- runs 73-85, makes 47 and keeps 27.
+-- at 73. Alone and with Enchanting it runs 73-84, makes 32 and keeps 28 for the capes and shoulders.
+-- With Enchanting the silk bolts' settle takes Double-stitched Woolen Shoulders 112-120, so the
+-- woolen bolts are sized again on the final picks: 73-85 x47 kept only 27 and left 20 spare.
 
 local CP = ProfLost
 local GT = CP.GuideTab
@@ -89,10 +90,10 @@ T.test("Tailoring 73 alone: the bolt row runs 73-84 for the capes and shoulders"
     CraftWorld.Close()
 end)
 
-T.test("Tailoring 73 with Enchanting: the bolt row runs to 85, then the capes", function()
+T.test("Tailoring 73 with Enchanting: the bolt row makes only what the capes and shoulders keep", function()
     scene(73, true)
     open()
-    bolts("with Enchanting", 47, 27, 85, "Woolen Cape 85-97 x18")
+    bolts("with Enchanting", 32, 28, 84, "Woolen Cape 84-97 x19")
     CraftWorld.Close()
 end)
 
@@ -270,3 +271,62 @@ T.test("rule 8: a locked Linen Belt blocks the bolts; the bolt row keeps the who
     T.ok(played > 45 + 1, "past the plain slack, so only the blocked bound passes it")
     CraftWorld.Close()
 end)
+
+-- A maker row makes what real consumers keep. Its keep, played from the row's start, reaches the row's
+-- end within rowpoints' slack, unless the pick loop chose the maker there on its own merit (the
+-- unsettled solve has a run of it reaching that end). Every guide with makers, from 1, both modes.
+local GUIDES = { { "Alchemy", 171 }, { "Blacksmithing", 164 }, { "Engineering", 202 }, { "Leatherworking", 165 },
+                 { "Tailoring", TAILOR }, { "Tailoring with Enchanting", TAILOR, ENCHANTING } }
+
+local function solved(p, collect, settle)
+    MapWorld.begin({ zone = DUROTAR, level = 30, side = "Horde" })
+    local profs = { [p[2]] = { rank = 1, max = 300 } }
+    if p[3] then profs[p[3]] = { rank = 1, max = 300 } end
+    CraftWorld.begin({ professions = profs, bags = {} })
+    World.set(CP.db, "collect", collect)
+    World.set(CP.db, "hideInCombat", false)
+    World.set(CP.charDB, "committed", nil)
+    World.set(CP.charDB, "lastPlan", nil)
+    World.set(CP.Solver, "SETTLE", settle)
+    CP.Plan.Invalidate()
+    if p[3] then
+        CraftWorld.Open(p[3])
+        T.advance(1)
+        CP.Plan.Current()
+        CraftWorld.Close()
+        T.advance(1)
+    end
+    CraftWorld.Open(p[2])
+    T.advance(1)
+    local live = CP.Plan.Current()
+    CraftWorld.Close()
+    return live
+end
+
+for _, collect in ipairs({ true, false }) do
+    for _, p in ipairs(GUIDES) do
+        T.test(("%s from 1, %s: no maker row makes more than its consumers keep"):format(p[1],
+            collect and "Level-as-you-go" or "buy"), function()
+            local live = solved(p, collect, true)
+            local guide = live.guide
+            local prep, craftOnly = guide.prep or {}, guide.craftOnly or {}
+            local keeps = CP.Guide.Keeps(guide, live.plan, {})
+            local plain = solved(p, collect, false).plan
+            for i, st in ipairs(live.plan) do
+                local r = st.spell and guide.recipes[st.spell]
+                if r and r.makes and (prep[r.makes] or craftOnly[r.makes]) then
+                    local keep = keeps[i] and keeps[i].count or 0
+                    local reach = CP.Solver.Play(r, st.from, keep / (r.yield or 1))
+                    local merit = false
+                    for _, u in ipairs(plain) do
+                        if u.spell == st.spell and u.from < st.to and u.to >= st.to - 1 then merit = true end
+                    end
+                    print(("PREPPOINTS|spare|%s|%s %d-%d x%d keep %d plays to %.1f%s"):format(p[1], r.name, st.from,
+                        st.to, st.crafts, keep, reach, merit and ", the pick loop's own run" or ""))
+                    T.ok(reach >= st.to - 1 or merit, ("%s %d-%d makes %d, its consumers keep %d, which play to %.1f"):format(
+                        r.name, st.from, st.to, st.crafts, keep, reach))
+                end
+            end
+        end)
+    end
+end
