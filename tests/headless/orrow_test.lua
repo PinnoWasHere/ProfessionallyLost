@@ -7,7 +7,7 @@
 local CP = ProfLost
 local GT = CP.GuideTab
 local LW, SKINNING = 165, 393
-local BRACERS, SHOULDERS, GLOVES, HIDE = 9202, 7151, 7156, 4235
+local BRACERS, SHOULDERS, GLOVES, HIDE, SALT = 9202, 7151, 7156, 4235, 4289
 
 -- Every trainer recipe up to `rank`, and the bracers' pattern.
 local function known(rank)
@@ -19,9 +19,14 @@ local function known(rank)
 end
 
 -- Leatherworking 165 with Skinning 290 at level 40, the bracers saved as the current step.
-local function scene(bags, collect)
+-- `unknown` leaves one trainer recipe unlearned.
+local function scene(bags, collect, unknown)
+    local list = {}
+    for _, id in ipairs(known(165)) do
+        if id ~= unknown then list[#list + 1] = id end
+    end
     MapWorld.begin({ zone = 1417, level = 40, side = "Horde" })
-    CraftWorld.begin({ professions = { [LW] = { rank = 165, max = 225, known = known(165) },
+    CraftWorld.begin({ professions = { [LW] = { rank = 165, max = 225, known = list },
                                        [SKINNING] = { rank = 290, max = 300 } }, bags = bags })
     World.set(CP.db, "collect", collect ~= false)
     World.set(CP.charDB, "lastPlan", nil)
@@ -132,6 +137,31 @@ T.test("buy mode: the same comparison by gold; hides a later step uses are not f
     T.ok(later, "a later Guardian Gloves step")
     alt = cheaperRow()
     T.eq(alt and alt.cheaper, "Cheaper now at today's prices", "the hides are kept for it")
+    CraftWorld.Close()
+end)
+
+T.test("the reason never names a vendor good", function()
+    -- The hides' curing takes the held Salt too, but Salt is bought on the way.
+    scene({ [HIDE] = 10, [SALT] = 30 })
+    local alt = cheaperRow(GLOVES)
+    T.eq(alt and alt.cheaper, "Cheaper now: uses your 10 Heavy Hide", "the hides alone")
+    CraftWorld.Close()
+end)
+
+T.test("buy mode: an unlearned trainer recipe pays its fee and reads trainer", function()
+    -- Guardian Gloves' 2160 fee is spread over the points left to grey 205 at each skill, as the
+    -- solve spreads it; the gloves still beat the bracers by far.
+    scene({}, false, GLOVES)
+    local alt = cheaperRow(GLOVES)
+    T.ok(alt ~= nil and not alt.learned, "the unlearned gloves still show")
+    local _, list = CP.Plan.Cheaper(CP.Plan.Current())
+    local f = list and list[1]
+    T.eq(f and f.spell, GLOVES, "the gloves lead")
+    local fee = 0
+    for s = 165, 174 do fee = fee + 2160 / (205 - s) end
+    T.ok(f and math.abs(f.cost - (38500 + fee)) < 1, ("the fee is in the cost: %s, want %.1f"):format(tostring(f and f.cost), 38500 + fee))
+    local _, _, info = GT.RowTexts(alt)
+    T.eq(info, "trainer", "the row says where to learn it")
     CraftWorld.Close()
 end)
 

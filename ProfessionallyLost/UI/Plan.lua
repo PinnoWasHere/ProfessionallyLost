@@ -1854,13 +1854,15 @@ local function kept(live, to)
 end
 
 -- "10 Heavy Hide" for each held material `used` took beyond what the current step's recipe took
--- (`base`), the largest first; nil when none has a name yet.
-local function heldWords(used, base)
+-- (`base`), the most worth first at `value(item)` each; nil when none has a name yet. Vendor goods
+-- are bought on the way, so they are never the reason.
+local function heldWords(guide, used, base, value)
     local list = {}
     for item, n in pairs(used) do
-        local more = n - (base[item] or 0)
+        local info = guide.items and guide.items[item]
+        local more = (n - (base[item] or 0)) * value(item)
         local count = math.floor(n + 1e-6)
-        local name = more >= 1 and count > 0 and C_Item.GetItemNameByID(item)
+        local name = n - (base[item] or 0) >= 1 and count > 0 and not (info and info[2]) and C_Item.GetItemNameByID(item)
         if name then list[#list + 1] = { item = item, more = more, text = ("%d %s"):format(count, name) } end
     end
     table.sort(list, function(a, b)
@@ -1962,7 +1964,9 @@ function Plan.Cheaper(live)
         for i = 1, math.min(#found, Plan.CHEAPER_MAX) do
             local f = found[i]
             local r = guide.recipes[f.id]
-            local words = heldWords(f.used, base)
+            local words = heldWords(guide, f.used, base, function(item)
+                return (price(item, guide.items and guide.items[item])) or 0
+            end)
             out = out or {}
             out[i] = { spell = f.id, recipe = r, learned = learned[f.id] == true, crafts = CP.Guide.Crafts(r, from, to),
                        cheaper = words and Plan.CHEAPER_HELD:format(words)
