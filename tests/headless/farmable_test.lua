@@ -3,7 +3,7 @@
 -- for you yet."; "I don't want to see farmable NPCs like this. Enemy mobs are fine. But Undercity?
 -- Stormwind?"). Quinard is an Undercity NPC (faction template 68) whose loot gives Sungrass at 31.5%.
 -- The data leaves out faction NPCs, quest and event NPCs, bosses and rares
--- (scripts/guidegen/farmable.py), and a why text names the item and the zone, never a creature.
+-- (the data build's farm rule), and a why text names the item and the zone, never a creature.
 -- Real generated data.
 
 local CP = ProfLost

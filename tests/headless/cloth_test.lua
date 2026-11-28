@@ -76,7 +76,7 @@ T.test("a band more than three levels above the player does not count", function
     for _, s in ipairs(c.spots) do T.ok(s.lo <= 48, "each spot's creatures start at most 3 above") end
 end)
 
--- Owner, 2026-11-27: "Enemy faction camps: yes" (scripts/guidegen/farmable.py), so Durotar's Kul Tiras
+-- Owner, 2026-11-27: "Enemy faction camps: yes" (the data build's farm rule), so Durotar's Kul Tiras
 -- camp bands for the Horde alone.
 T.test("an enemy camp's cloth band is the side's it is hostile to", function()
     scene({ zone = DUROTAR, level = 5 })

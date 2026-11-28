@@ -3,7 +3,7 @@
 -- Horde's cloth. "Enemy territory: there's always an alternative spot": no guide, farm spot or pin
 -- sends a character into the other faction's territory (AreaTable's FactionGroupMask, shipped as
 -- GatherData.territory). The simulator's Alliance skinner was sent to the Barrens at Skinning 120.
--- Capital residents and town guards stay out for both factions (scripts/guidegen/farmable.py).
+-- Capital residents and town guards stay out for both factions (the data build's farm rule).
 -- Real generated data.
 
 local CP = ProfLost
