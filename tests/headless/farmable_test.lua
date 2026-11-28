@@ -76,9 +76,17 @@ end
 
 T.test("the data holds no faction NPC, boss or rare as a farm", function()
     local mobs = CP.GatherData.mobs
-    for _, e in ipairs({ QUINARD, KIRIKA, BLUEWALL, TORTA, ONYXIA }) do
+    for _, e in ipairs({ KIRIKA, BLUEWALL, TORTA, ONYXIA }) do
         T.eq(mobs[e], nil, "creature " .. e .. " is no farm")
     end
+end)
+
+T.test("Quinard, a Forsaken NPC out in Silithus, is the Alliance's farm alone", function()
+    T.eq(CP.GatherData.sides[QUINARD], "A", "hostile to the Alliance only (owner, 2026-11-27: enemy faction camps)")
+    MapWorld.begin({ zone = TANARIS, side = "Horde", level = 60 })
+    T.eq(G.Gives(QUINARD, COOK), false, "the Horde never farms him")
+    MapWorld.begin({ zone = TANARIS, side = "Alliance", level = 60 })
+    T.eq(G.Gives(QUINARD, COOK), true)
 end)
 
 T.test("Tanaris, Horde skinner with Cooking at 48: Profit lists no Sungrass", function()

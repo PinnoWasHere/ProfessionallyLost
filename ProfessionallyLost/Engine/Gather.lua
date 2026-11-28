@@ -14,29 +14,36 @@ Gather.PROFS = { 393, 186, 182, 185, 356 }
 
 local ORDER = { [393] = 1, [186] = 2, [182] = 3, [185] = 4, [356] = 5 }
 
--- Each faction's home zones and capitals. Guides never send a player into the other
--- faction's (Stormwind's canals are a fine 75-130 spot, for the Alliance only).
-local HOME_ZONES = {
-    Alliance = { [1429] = true, [1426] = true, [1438] = true, [1436] = true, [1432] = true, [1439] = true,
-                 [1453] = true, [1455] = true, [1457] = true },
-    Horde = { [1411] = true, [1412] = true, [1420] = true, [1421] = true,
-              [1454] = true, [1456] = true, [1458] = true },
-}
 local ENEMY = { Alliance = "Horde", Horde = "Alliance" }
+local LETTER = { Alliance = "A", Horde = "H" }
 
--- Each faction's own levelling ground beyond its home zones: towns, flight paths and
--- quests there are theirs (Redridge and Duskwood for the Alliance, the Barrens for the Horde).
-local TERRITORY = {
+-- Contested zones a faction levels on: towns, flight paths and quests there are theirs
+-- (Redridge, Duskwood and the Wetlands for the Alliance). Guides weigh them down for the
+-- other faction.
+local LEANS = {
     Alliance = { [1433] = true, [1431] = true, [1437] = true },
-    Horde = { [1413] = true },
+    Horde = {},
 }
 
--- "own", "enemy" or "contested": whose ground `zone` is for `side`.
+-- True when `zone` is the territory of the faction opposing `side` ("Alliance" or "Horde"),
+-- by the data (GatherData.territory, AreaTable's FactionGroupMask): its home zones, capitals
+-- and the Barrens. No guide, farm spot or pin sends a player there; owner, 2026-11-27:
+-- "there's always an alternative spot".
+function Gather.EnemyGround(zone, side)
+    local enemy = ENEMY[side]
+    local land = CP.GatherData.territory
+    return enemy ~= nil and land ~= nil and land[zone] == LETTER[enemy]
+end
+
+-- "own", "theirs", "enemy" or "contested": whose ground `zone` is for `side`. "theirs" is
+-- contested ground the other faction levels on; "enemy" is its territory.
 function Gather.Territory(zone, side)
     local enemy = ENEMY[side]
     if not enemy then return "contested" end
-    if HOME_ZONES[side][zone] or TERRITORY[side][zone] then return "own" end
-    if HOME_ZONES[enemy][zone] or TERRITORY[enemy][zone] then return "enemy" end
+    local land = CP.GatherData.territory or {}
+    if land[zone] == LETTER[side] or LEANS[side][zone] then return "own" end
+    if land[zone] == LETTER[enemy] then return "enemy" end
+    if LEANS[enemy][zone] then return "theirs" end
     return "contested"
 end
 
@@ -45,10 +52,12 @@ function Gather.PlayerLevel()
     return UnitLevel("player") or 1
 end
 
--- True when `zone` is a home zone of the faction opposing `side` ("Alliance" or "Horde").
-function Gather.EnemyHome(zone, side)
-    local enemy = side and HOME_ZONES[ENEMY[side]]
-    return enemy ~= nil and enemy[zone] == true
+-- True when the player's faction may farm creature `entry`. GatherData.sides names the one
+-- faction whose farm a creature hostile to it alone is (Durotar's Kul Tiras Marines for the
+-- Horde); every other creature in the data is both factions' farm.
+function Gather.ForSide(entry)
+    local only = CP.GatherData.sides and CP.GatherData.sides[entry]
+    return only == nil or only == LETTER[UnitFactionGroup("player")]
 end
 
 -- Skill needed to skin, herb or mine a corpse of `level`.
@@ -97,9 +106,10 @@ function Gather.SkinChanged()
     if CP.GatherList then CP.GatherList.Changed() end
 end
 
--- True when creature `entry` gives `prof` loot in this game.
+-- True when creature `entry` gives `prof` loot to this player: their faction farms it
+-- (Gather.ForSide), and Forever lets it be skinned.
 function Gather.Gives(entry, prof)
-    return prof ~= Gather.SKINNING or Gather.Skinnable(entry)
+    return Gather.ForSide(entry) and (prof ~= Gather.SKINNING or Gather.Skinnable(entry))
 end
 
 -- What a looted corpse showed: `skinnable` true when its tooltip had the line.
@@ -1523,7 +1533,7 @@ Gather.ZONE_LEVEL_FALLOFF = 10
 -- continent's), for the Farm filter: { { item, skill, need, zones = { zone... } } }, lowest
 -- skill first. `zones` holds the best places for it near `level`, best first: creatures
 -- at most FARM_SAFE_LEVELS above `level`, scored by chance x spawns and ZONE_LEVEL_FALLOFF;
--- the other faction's home zones never. Kept until the spawn data changes.
+-- the other faction's territory never. Kept until the spawn data changes.
 function Gather.ContinentSkins(zones, skills, level, side)
     local rank = (skills or Gather.Skills())[Gather.SKINNING]
     if not rank then return {} end
@@ -1547,7 +1557,7 @@ function Gather.ContinentSkins(zones, skills, level, side)
                         top = math.max(top, src.maxLevel)
                     end
                 end
-                if score > 0 and not Gather.EnemyHome(zone, side) then
+                if score > 0 and not Gather.EnemyGround(zone, side) then
                     local below = math.max(0, level - top)
                     e.scores[#e.scores + 1] = { zone = zone, score = score / (1 + below / Gather.ZONE_LEVEL_FALLOFF) }
                 end

@@ -319,10 +319,10 @@ for _, case in ipairs({ { "Alliance", ELWYNN, "Horde" }, { "Horde", TIRISFAL, "A
                 for _, item in ipairs({ LIGHT, COPPER, PEACEBLOOM }) do
                     local best = CP.Farm.Best(item, { level = 30, side = side, skills = skills, continent = 0 })
                     T.ok(best ~= nil, side .. ": a best zone for " .. item)
-                    T.ok(best and not G.EnemyHome(best.zone, side), side .. ": Farm.Best avoids enemy homes")
+                    T.ok(best and not G.EnemyGround(best.zone, side), side .. ": Farm.Best avoids enemy homes")
                 end
                 for _, c in ipairs(CP.Fishing.Candidates(100, 30, side)) do
-                    T.ok(not G.EnemyHome(c.zone, side), side .. ": fishing sends to " .. c.zone)
+                    T.ok(not G.EnemyGround(c.zone, side), side .. ": fishing sends to " .. c.zone)
                 end
                 GL.Refresh()
                 for _, mat in ipairs(GL.FarmLeathers(home, G.Skills())) do

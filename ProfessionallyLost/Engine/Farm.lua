@@ -129,7 +129,7 @@ local function search(item, opts, tick)
     end
     local best
     for zone, z in pairs(#list > 0 and D.zones or {}) do
-        if not z.inst and not CP.GatherGuide.SKIP[zone] and not G.EnemyHome(zone, opts.side)
+        if not z.inst and not CP.GatherGuide.SKIP[zone] and not G.EnemyGround(zone, opts.side)
             and not startShut(zone) and not (z.lvl and z.lvl[1] > level + SAFE_LEVELS) then
             local score = 0
             for _, src in ipairs(list) do
@@ -433,10 +433,10 @@ end
 
 local function dataKind(src) return src.kind == "mob" and "mobs" or "nodes" end
 
--- Zones a place may be in, as Farm.Best's search takes them: no instance, capital, home
--- zone of the other faction, or starting isle the player is not on.
+-- Zones a place may be in, as Farm.Best's search takes them: no instance, capital, the other
+-- faction's territory (Gather.EnemyGround), or starting isle the player is not on.
 local function openZone(zone, z, side)
-    return not z.inst and not CP.GatherGuide.SKIP[zone] and not G.EnemyHome(zone, side) and not startShut(zone)
+    return not z.inst and not CP.GatherGuide.SKIP[zone] and not G.EnemyGround(zone, side) and not startShut(zone)
 end
 
 -- The place `placeIn(zone)` finds in the player's zone, else the nearest of the places it

@@ -135,14 +135,14 @@ T.test("fishing never sends a player to the other faction's capital", function()
     local ENEMY = { Alliance = "Horde", Horde = "Alliance" }
     for _, side in ipairs({ "Horde", "Alliance" }) do
         for _, zone in ipairs(CAPITALS[ENEMY[side]]) do
-            T.ok(G.EnemyHome(zone, side), ("%s: %d counts as enemy"):format(side, zone))
+            T.ok(G.EnemyGround(zone, side), ("%s: %d counts as enemy"):format(side, zone))
         end
         for _, zone in ipairs(CAPITALS[side]) do
-            T.ok(not G.EnemyHome(zone, side), ("%s: own capital %d allowed"):format(side, zone))
+            T.ok(not G.EnemyGround(zone, side), ("%s: own capital %d allowed"):format(side, zone))
         end
         for _, skill in ipairs({ 75, 100, 125 }) do
             for _, c in ipairs(F.Candidates(skill, 20, side)) do
-                T.ok(not G.EnemyHome(c.zone, side), ("%s at %d: sent to %d"):format(side, skill, c.zone))
+                T.ok(not G.EnemyGround(c.zone, side), ("%s at %d: sent to %d"):format(side, skill, c.zone))
             end
         end
     end

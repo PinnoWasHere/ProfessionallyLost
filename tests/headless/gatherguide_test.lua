@@ -254,7 +254,7 @@ T.test("fishing never sends a player into the other faction's home waters", func
         end
     end
     for _, r in ipairs(rows(FISH, 1, 75, 5, "Horde", DUROTAR)) do
-        if r.fish then T.ok(not CP.Gather.EnemyHome(r.fish.zone, "Horde"), "fishing row in " .. r.fish.zone) end
+        if r.fish then T.ok(not CP.Gather.EnemyGround(r.fish.zone, "Horde"), "fishing row in " .. r.fish.zone) end
     end
     local plan = CP.Fishing.Plan({ skill = 1, maxRank = 75, level = 5, zone = DUROTAR, side = "Alliance",
                                    needs = {}, have = none })
@@ -291,7 +291,7 @@ T.test("gathering zones stay off the other faction's ground", function()
                 end
             end
         end
-        T.eq(CP.Gather.Territory(1433, "Horde"), "enemy", "Redridge is Alliance ground")
+        T.eq(CP.Gather.Territory(1433, "Horde"), "theirs", "Redridge is contested ground the Alliance levels on")
         T.eq(CP.Gather.Territory(1413, "Horde"), "own", "the Barrens are Horde ground")
         T.eq(CP.Gather.Territory(1424, "Horde"), "contested", "Hillsbrad is contested")
     end)
