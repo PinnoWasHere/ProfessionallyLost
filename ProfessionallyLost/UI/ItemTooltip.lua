@@ -3,7 +3,7 @@ if CP.stopped then return end
 
 -- Item tooltips name what the player's guides still need of the item, how many are in
 -- the bags, bank and mail, and the best zone to farm it. An ore names the guides' need of
--- the bar it smelts into.
+-- the bar it smelts into and how much ore is left to mine after the ore held.
 
 local ItemTooltip = {}
 CP.ItemTooltip = ItemTooltip
@@ -60,15 +60,17 @@ end
 
 -- What the guides still need of bar `bar` as Mining smelts it: { needs = Needs(bar), chain =
 -- { { item, n } }, total, held, short }. `chain` holds the bars smelted from it (Bronze Bar takes a
--- Copper Bar), each with the bars of `bar` its shortfall asks.
-function ItemTooltip.BarNeed(bar)
+-- Copper Bar), each with the bars of `bar` its shortfall asks. Each stage counts what the bags,
+-- bank and mail hold of its own bar first, BAR_DEPTH deep.
+ItemTooltip.BAR_DEPTH = 3
+function ItemTooltip.BarNeed(bar, depth)
+    depth = depth or 1
     local out = { needs = ItemTooltip.Needs(bar), chain = {}, total = rawNeed(bar), held = have(bar) }
-    for _, s in ipairs(usedBy(bar) or {}) do
-        local into = s.r.makes
-        local short = rawNeed(into) - have(into)
-        if short > 0 then
-            local n = math.ceil(short / (s.r.yield or 1)) * s.count
-            out.chain[#out.chain + 1] = { item = into, n = n }
+    for _, s in ipairs(depth < ItemTooltip.BAR_DEPTH and usedBy(bar) or {}) do
+        local into = ItemTooltip.BarNeed(s.r.makes, depth + 1)
+        if into.short > 0 then
+            local n = math.ceil(into.short / (s.r.yield or 1)) * s.count
+            out.chain[#out.chain + 1] = { item = s.r.makes, n = n }
             out.total = out.total + n
         end
     end
@@ -76,10 +78,25 @@ function ItemTooltip.BarNeed(bar)
     return out
 end
 
--- An ore's lines: for each bar it smelts into that a guide needs, who needs how many, the bars held
--- and the ore the shortfall takes ("Have 30 · short x70 (70 ore)").
-local function smeltLines(item, lines)
-    local c, short = S.color, 0
+-- The ore a bar shortfall of `short` takes by smelt `s`, less `held` ore: ore, mine.
+function ItemTooltip.OreShort(s, short, held)
+    local ore = math.ceil(short / (s.r.yield or 1)) * s.count
+    return ore, math.max(0, ore - held)
+end
+
+-- "(40 ore held, mine 30)", "(mine 70 ore)" or "(70 ore held, smelt them)".
+function ItemTooltip.OreText(ore, mine)
+    local held = ore - mine
+    if held <= 0 then return ("(mine %d ore)"):format(mine) end
+    if mine <= 0 then return ("(%d ore held, smelt them)"):format(ore) end
+    return ("(%d ore held, mine %d)"):format(held, mine)
+end
+
+-- An ore's lines: for each bar it smelts into that a guide needs, who needs how many, the bars held,
+-- and the ore the shortfall takes less the ore held ("Have 30 · short x70 (40 ore held, mine 30)").
+-- `left` is the ore held beyond the guides' own need of it. Returns the ore still to mine.
+local function smeltLines(item, lines, left)
+    local c, mined = S.color, 0
     -- An ore is mined from a node and no smelt makes it; a bar or Coal takes no lines here.
     if CP.Farm.SmeltsOf(item) or not CP.Sourcing.FromNodes(item) then return 0 end
     for _, s in ipairs(usedBy(item) or {}) do
@@ -93,14 +110,16 @@ local function smeltLines(item, lines)
             for _, ch in ipairs(need.chain) do
                 lines[#lines + 1] = { ("x%d more for %s"):format(ch.n, CP.ItemName(ch.item) or "another bar"), nil, c.label }
             end
-            local ore = math.ceil(need.short / (s.r.yield or 1)) * s.count
+            local ore, mine = ItemTooltip.OreShort(s, need.short, left)
+            left = math.max(0, left - ore)
             lines[#lines + 1] = need.short > 0
-                and { ("Have %d · short x%d (%d ore)"):format(need.held, need.short, ore), nil, c.warn }
+                and { ("Have %d · short x%d %s"):format(need.held, need.short, ItemTooltip.OreText(ore, mine)), nil,
+                      mine > 0 and c.warn or c.good }
                 or { ("Have %d · enough"):format(need.held), nil, c.good }
-            short = short + ore
+            mined = mined + mine
         end
     end
-    return short
+    return mined
 end
 
 -- The lines for `item`: { { left, right, leftColor, rightColor } }. An ore also gets the guide
@@ -122,7 +141,7 @@ function ItemTooltip.Lines(item)
             and { ("Have %d · short x%d"):format(held, short), nil, c.warn }
             or { ("Have %d · enough"):format(held), nil, c.good }
     end
-    short = math.max(0, short) + smeltLines(item, lines)
+    short = math.max(0, short) + smeltLines(item, lines, math.max(0, -short))
     if #lines == 0 then return lines end
     -- The farm zone comes from what is already known; a new search runs in the background
     -- and the line says so until it is done.

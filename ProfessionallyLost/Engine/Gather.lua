@@ -1071,14 +1071,47 @@ function Gather.LiveStep(key, st)
     return live
 end
 
+-- What the guide's maker rows make of each prep material beyond the plan's own crafts, and what
+-- that takes: { [item] = count } added to `use` (the plan's materials, Queue.Materials). A prep
+-- material's need less what the plan's crafts make and the bags, bank and mail hold is made first
+-- (Guide.Keeps puts it on the maker's row), so its own materials count too, Plan.PREP_DEPTH deep
+-- (Cured Heavy Hide takes Heavy Hide and Salt; Bolt of Runecloth takes Runecloth).
+function Gather.PrepShort(guide, entries, use)
+    local prep = guide.prep or {}
+    local made, done, extra = {}, {}, {}
+    for _, e in ipairs(entries) do
+        if e.kind == "craft" and e.recipe.makes then
+            made[e.recipe.makes] = (made[e.recipe.makes] or 0) + e.crafts * (e.recipe.yield or 1)
+        end
+    end
+    local function total(item) return (use[item] or 0) + (extra[item] or 0) end
+    for _ = 1, (CP.Plan and CP.Plan.PREP_DEPTH or 3) do
+        local more = false
+        for item, spell in pairs(prep) do
+            local maker = guide.recipes[spell]
+            local short = maker and total(item) - (made[item] or 0) - (done[item] or 0) - CP.Purchases.Have(item)
+            if short and short > 0 then
+                local runs = math.ceil(short / (maker.yield or 1) - 1e-9)
+                done[item] = (done[item] or 0) + runs * (maker.yield or 1)
+                for _, pair in ipairs(maker.reagents) do extra[pair[1]] = (extra[pair[1]] or 0) + pair[2] * runs end
+                more = true
+            end
+        end
+        if not more then break end
+    end
+    return extra
+end
+
 -- The materials `live`'s plan needs from its skill to `target`: { [item] = count }, or nil
--- for none. `live` is from Plan.Current or Plan.Shut.
+-- for none. A prep material made beyond the plan's crafts counts what it is made from
+-- (Gather.PrepShort). `live` is from Plan.Current or Plan.Shut.
 function Gather.NeedsTo(live, target)
     local guide, p, Q = live.guide, live.prof, CP.Queue
     local out = {}
     if target and target > p.skill then
         local entries = Q.Build(guide, p.skill, p.max, target, live.plan, live.learned)
         for _, m in ipairs(Q.Materials(entries)) do out[m.itemID] = m.need end
+        for item, n in pairs(Gather.PrepShort(guide, entries, out)) do out[item] = (out[item] or 0) + n end
     end
     return next(out) and out or nil
 end

@@ -668,7 +668,10 @@ T.test("detached, a first detach takes its rows' height, at least SIZE_MIN, and 
         GP.ModeChanged()
     end)
     World.set(CP.Gather, "UpdateAllNeeds", function() end)
-    CP.charDB.gatherNeeds = { [164] = { [COPPER_ORE] = 40 } }
+    World.set(CP.charDB, "gatherNeeds", { [164] = { [COPPER_ORE] = 40 } })
+
+    -- The list holds these needs before the first detach measures it.
+    CP.GatherList.Refresh()
     GP.Layout()
     CP.GatherList.Refresh()
     local need = CP.GatherList.NeedHeight() + 2 * P.BODY_PAD + 4
