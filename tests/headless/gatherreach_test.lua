@@ -89,7 +89,7 @@ end)
 T.test("a saved plan from before the reach rule keeps its current step and gives up the later scale step", function()
     character(165, 38)
     local ctx = CP.Plan.Context(LW)
-    World.set(CP.charDB, "committed", { [LW] = { [ctx] = { version = CP.Plan.COMMIT_VERSION, ctx = ctx, skill = 165,
+    World.set(CP.charDB, "committed", { [LW] = { [ctx] = { version = CP.Plan.COMMIT_VERSION, costfix = true, ctx = ctx, skill = 165,
         shown = true, steps = { { 165, 175, BRACERS, nil, 10, nil, nil, nil, 10 },
                                 { 175, 185, BRACERS, nil, 10, nil, nil, nil, 10 } } } } })
     World.set(CP.charDB, "lastPlan", nil)

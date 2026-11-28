@@ -245,7 +245,7 @@ T.test("rule 8: a locked Linen Belt blocks the bolts; the bolt row keeps the who
     World.set(CP.charDB, "lastPlan", nil)
     local ctx = CP.Plan.Context(TAILOR)
     local steps = { { 45, 67, BELT, nil, 28, nil, nil, 0, 28 }, { 67, 77, 2397, nil, 16, nil, nil, 0, 16 } }
-    World.set(CP.charDB, "committed", { [TAILOR] = { [ctx] = { version = CP.Plan.COMMIT_VERSION, ctx = ctx,
+    World.set(CP.charDB, "committed", { [TAILOR] = { [ctx] = { version = CP.Plan.COMMIT_VERSION, costfix = true, ctx = ctx,
         steps = steps, made = 0, skill = 44, shown = true, curKey = CP.Plan.StepKey(steps[1]) } } })
     open()
     local rows = mainRows()

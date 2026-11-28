@@ -34,7 +34,7 @@ end
 -- A plan saved mid-way through the Bracers: 4 of 10 made, a second Bracers step after it.
 local function saved(fields)
     local ctx = CP.Plan.Context(LW)
-    local c = { version = CP.Plan.COMMIT_VERSION, ctx = ctx, skill = 165, shown = true, made = 4,
+    local c = { version = CP.Plan.COMMIT_VERSION, costfix = true, ctx = ctx, skill = 165, shown = true, made = 4,
                 curKey = "9202:165:175", current = 1,
                 steps = { { 165, 175, BRACERS, nil, 10, nil, nil, nil, 10 },
                           { 175, 185, BRACERS, nil, 10, nil, nil, nil, 10 } } }

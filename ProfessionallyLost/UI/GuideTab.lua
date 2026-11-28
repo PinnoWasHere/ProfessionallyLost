@@ -1368,7 +1368,7 @@ local function fillDetails(row)
     end
     local have = CP.GuideTab.MaterialsText(ui.guide, row, reagents)
     if row.side and row.learned then
-        local why = row.cheaper or row.withFish and "With fishing" or row.limited and "If the pattern above is sold out"
+        local why = row.withFish and "With fishing" or row.limited and "If the pattern above is sold out"
             or row.fallback and "If you can't get the pattern above"
             or "Or instead of the step above"
         d.status:SetText(("%s  ·  %s"):format(why, have))
@@ -1377,13 +1377,16 @@ local function fillDetails(row)
     elseif row.learned then
         local keep = row.keep and ("  ·  keep %d for later"):format(row.keep.count) or ""
         local ups = CP.GuideTab.SkillUpsText(row)
-        d.status:SetText(("%d-%d  ·  ~%d crafts%s%s  ·  %s"):format(row.from, row.to, row.crafts,
-            ups and ("  ·  " .. ups) or "", keep, have))
+        local line = ("%d-%d  ·  ~%d crafts%s%s  ·  %s"):format(row.from, row.to, row.crafts,
+            ups and ("  ·  " .. ups) or "", keep, have)
+        local fixed = not row.side and CP.Plan.CorrectedText(profID, row.spell)
+        d.status:SetText(fixed and ("%s  ·  %s"):format(fixed, line) or line)
         d.status:SetTextColor(unpack(S.color.label))
         d.pin:Hide()
     else
         local line = learnLine(row)
-        if row.cheaper then line = ("%s  ·  %s"):format(row.cheaper, line) end
+        local fixed = not row.side and CP.Plan.CorrectedText(profID, row.spell)
+        if fixed then line = ("%s  ·  %s"):format(fixed, line) end
         if CP.Plan.OpenOnce(ui.live) then
             d.status:SetText(line)
             d.status:SetTextColor(unpack(S.color.warn))
@@ -1559,14 +1562,11 @@ CP.GuideTab.FillDetails = fillDetails
 -- Daylight UI's window or the game's. With a window open on another profession it
 -- switches that window to the row's profession and selects there (Window.OpenTo). With
 -- no profession window open nothing opens: only the step card's Open button does.
--- Waypoints come only from the row's pin. A cheaper "or" row picked becomes the current step
--- (Plan.Switch), and the pick moves to that step's row.
+-- Waypoints come only from the row's pin.
 local function pick(row)
     local own = ui.live or CP.Window.Live()
     if own and own.prof then profID = own.prof.id end
-    local key = row.key
-    if row.cheaper and own and CP.Plan.Switch(own, row.spell) then key = row.from end
-    setPick(profID, key)
+    setPick(profID, row.key)
     if CP.Buying then CP.Buying.Changed() end
     local recipe = row.spell and not (row.rank or row.train or isGatherRow(row))
     if recipe and row.learned and ui.live then
@@ -1640,11 +1640,10 @@ local function rowTexts(row)
         local lo = row.lo and row.lo > row.from and (" from " .. row.lo) or ""
         local upto = row.upto and row.upto < row.to and (" to " .. row.upto) or ""
         local info
-        local fallback = row.fallback or row.cheaper
-        if fallback and not row.learned then
+        if row.fallback and not row.learned then
             info = "trainer"
         else
-            info = fallback and ("~" .. row.crafts) or (row.crafts == 1 and "1 craft" or (row.crafts .. " crafts"))
+            info = row.fallback and ("~" .. row.crafts) or (row.crafts == 1 and "1 craft" or (row.crafts .. " crafts"))
         end
         return "", row.recipe.name .. lo .. upto, info .. mark
     end
@@ -1859,7 +1858,7 @@ local function initRow(btn, row)
     end
     -- A recipe's name keeps the game's difficulty colour, learned or not.
     btn.name:SetTextColor(unpack(diffColor(difficultyAt(row.recipe, math.max(skill, row.from)))))
-    local source = row.side and (row.fallback or row.cheaper) and not row.learned or not row.side and not row.learned
+    local source = row.side and row.fallback and not row.learned or not row.side and not row.learned
     local ink = patternHeld(row) and S.color.good or source and S.color.label or S.color.muted
     btn.info:SetTextColor(unpack(ink))
 end
@@ -2046,34 +2045,6 @@ local function sidesOf(side)
     return list
 end
 
--- `sides` with the current step's cheaper "or" rows (Plan.Cheaper) first under it. The plan's own
--- side tables stay as they are.
-local function withCheaper(live, sides)
-    local at, cheaper = CP.Plan.Cheaper(live)
-    if not at then return sides end
-    local out = {}
-    for i, side in pairs(sides) do out[i] = side end
-    local list, seen = {}, {}
-    for _, side in ipairs(cheaper) do
-        list[#list + 1] = side
-        seen[side.spell] = true
-    end
-    for _, side in ipairs(sidesOf(sides[at])) do
-        if not seen[side.spell] then
-            local copy = {}
-            for k, v in pairs(side) do copy[k] = v end
-            copy.more = nil
-            list[#list + 1] = copy
-        end
-    end
-    local first = {}
-    for k, v in pairs(list[1]) do first[k] = v end
-    first.more = {}
-    for k = 2, #list do first.more[#first.more + 1] = list[k] end
-    out[at] = first
-    return out
-end
-
 -- Put each side craft (one that uses hides) right under the main step it can stand
 -- in for, marked as interchangeable.
 local function withSides(rows, sides, craftable)
@@ -2086,7 +2057,6 @@ local function withSides(rows, sides, craftable)
                 recipe = side.recipe, from = row.from, to = row.to, crafts = side.crafts, learned = side.learned,
                 craftable = craftable[side.spell] or 0, rareFor = side.rareFor, fallback = side.fallback,
                 withFish = side.withFish, limited = side.limited, lo = side.lo, upto = side.upto,
-                cheaper = side.cheaper,
             }
         end
     end
@@ -2258,7 +2228,7 @@ local function guideRows(live)
         end
     end
     local alone = aloneKeys(live, main)
-    local all = withSides(joinedStops(live, main, alone), withCheaper(live, live.sides or {}), craftable)
+    local all = withSides(joinedStops(live, main, alone), live.sides or {}, craftable)
     markCauses(live, main, all, alone)
     return all
 end
