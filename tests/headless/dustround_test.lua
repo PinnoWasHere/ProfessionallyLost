@@ -26,9 +26,9 @@ local function showWindow()
     CP.Panel.tabs.guide.button:GetScript("OnClick")()
 end
 
-T.test("Tailoring 100 with Enchanting 60: the Tailoring card note and Enchanting's tag give one dust count", function()
+T.test("Tailoring 95 with Enchanting 60: the Tailoring card note and Enchanting's tag give one dust count", function()
     MapWorld.begin({ zone = 1429, level = 30, side = "Alliance" })
-    CraftWorld.begin({ professions = { [ENCHANTING] = { rank = 60, max = 75 }, [TAILOR] = { rank = 100, max = 150 } } })
+    CraftWorld.begin({ professions = { [ENCHANTING] = { rank = 60, max = 75 }, [TAILOR] = { rank = 95, max = 150 } } })
     World.set(CP.db, "collect", true)
     World.set(CP.db, "deEnchant", true)
     plan(ENCHANTING)

@@ -1,9 +1,10 @@
 -- Intermediate crafts earn their points (decision 0008). Player report on
 -- 1.2.0, Tailoring 67/150, empty bags: alone the guide read "Bolt of Woolen Cloth 67-73 ~138", whose
 -- 138 bolts carry the skill to 85; with Enchanting it read "Woolen Cape 67-97 ~36" with no bolt row.
--- Both now read Bolt of Woolen Cloth 67-85, then Woolen Cape 85-97 ~18. Alone the bolt row makes
--- 53, the bolts' points, and keeps 27 for the capes and shoulders. With Enchanting the shoulders run
--- longer, made to disenchant, so it makes 93 and keeps them all.
+-- Both read a bolt row, then the capes. Wool Cloth is a creature drop (4.7 effort a cloth, not the
+-- 3.5 of the skin it was once read as), so Reinforced Linen Cape covers 67-73 and the bolt row starts
+-- at 73. Alone it runs 73-84, makes 32 and keeps 28 for the capes and shoulders. With Enchanting it
+-- runs 73-85, makes 47 and keeps 27.
 
 local CP = ProfLost
 local GT = CP.GuideTab
@@ -58,15 +59,15 @@ end
 
 -- The bolt row and its card, then the cape row, as decision 0008 rule 6 reads them. `crafts` is the
 -- bolt row's count, `keep` what later steps keep of it.
-local function bolts(label, crafts, keep)
+local function bolts(label, crafts, keep, last, cape)
     local rows = mainRows()
     print(("PREPPOINTS|%s|%s|%s|%s"):format(label, text(rows[1]), text(rows[2]), text(rows[3])))
-    T.eq(text(rows[1]), ("Bolt of Woolen Cloth 67-85 x%d"):format(crafts), label .. ": the bolt row runs to the bolts' grey")
-    T.eq(text(rows[2]), "Woolen Cape 85-97 x18", label .. ": the cape row starts where the bolts end")
+    T.eq(text(rows[1]), ("Bolt of Woolen Cloth 73-%d x%d"):format(last, crafts), label .. ": the bolt row runs to the bolts' grey")
+    T.eq(text(rows[2]), cape, label .. ": the cape row starts where the bolts end")
     T.eq(rows[3] and rows[3].spell, SHOULDERS, label .. ": the shoulders follow")
     local status, note = card(rows[1])
     print(("PREPPOINTS|%s|card|%s|%s"):format(label, status, note))
-    T.ok(status:find("67-85", 1, true) ~= nil, "range: " .. status)
+    T.ok(status:find(("73-%d"):format(last), 1, true) ~= nil, "range: " .. status)
     T.ok(status:find(("~%d crafts"):format(crafts), 1, true) ~= nil, "count: " .. status)
     if keep >= crafts then
         T.ok(status:find("53 for skill-ups", 1, true) ~= nil, "skill-ups: " .. status)
@@ -76,29 +77,29 @@ local function bolts(label, crafts, keep)
     T.ok(note:find(("Keep %d for Woolen Cape, Double-stitched Woolen Shoulders"):format(keep), 1, true) ~= nil, "note: " .. note)
     local capeStatus = card(rows[2])
     print(("PREPPOINTS|%s|cape card|%s"):format(label, capeStatus))
-    T.ok(capeStatus:find("~18 crafts", 1, true) ~= nil, "cape count: " .. capeStatus)
+    T.ok(capeStatus:find(cape:match("x(%d+)$") and ("~%s crafts"):format(cape:match("x(%d+)$")) or "", 1, true) ~= nil, "cape count: " .. capeStatus)
     T.ok(capeStatus:find("for skill-ups", 1, true) == nil, "a row that keeps nothing says no skill-ups: " .. capeStatus)
     T.ok(capeStatus:find("first", 1, true) == nil, "the bolt row before it makes the bolts: " .. capeStatus)
 end
 
-T.test("Tailoring 67 alone: the bolt row runs 67-85 for the capes and shoulders", function()
-    scene(67, false)
+T.test("Tailoring 73 alone: the bolt row runs 73-84 for the capes and shoulders", function()
+    scene(73, false)
     open()
-    bolts("alone", 53, 27)
+    bolts("alone", 32, 28, 84, "Woolen Cape 84-97 x19")
     CraftWorld.Close()
 end)
 
-T.test("Tailoring 67 with Enchanting: the same bolt row, then the capes", function()
-    scene(67, true)
+T.test("Tailoring 73 with Enchanting: the bolt row runs to 85, then the capes", function()
+    scene(73, true)
     open()
-    bolts("with Enchanting", 93, 93)
+    bolts("with Enchanting", 47, 27, 85, "Woolen Cape 85-97 x18")
     CraftWorld.Close()
 end)
 
 T.test("the cape card asks no bolts first while the bags hold the ones the bolt row made", function()
-    scene(67, false)
+    scene(73, false)
     open()
-    T.eq(text(mainRows()[1]), "Bolt of Woolen Cloth 67-85 x53", "the bolt row leads")
+    T.eq(text(mainRows()[1]), "Bolt of Woolen Cloth 73-84 x32", "the bolt row leads")
     -- The bolt row done: its 53 bolts in the bags, the skill at the bolts' grey.
     CraftWorld.SetBag(BOLT_ITEM, 53)
     CraftWorld.SetSkill(TAILOR, 85, 150)
@@ -120,7 +121,7 @@ T.test("the cape card asks no bolts first while the bags hold the ones the bolt 
 end)
 
 T.test("the stop line stays quiet past the bolts' end while the row's count is unmet", function()
-    scene(67, false)
+    scene(73, false)
     open()
     local row = mainRows()[1]
     T.eq(row and row.spell, BOLT, "the bolt step leads")
@@ -128,7 +129,7 @@ T.test("the stop line stays quiet past the bolts' end while the row's count is u
     T.advance(0.3)
     CP.Crafting.Start(BOLT, row.crafts)
     T.advance(0.5)
-    T.eq(CP.Crafting.stepEnd, 85, "the batch noted the row's end")
+    T.eq(CP.Crafting.stepEnd, 84, "the batch noted the row's end")
     CraftWorld.SetSkill(TAILOR, 85, 150)
     CP.Panel:Refresh()
     T.advance(0.5)
@@ -141,7 +142,7 @@ T.test("the stop line stays quiet past the bolts' end while the row's count is u
 end)
 
 T.test("a batch whose crafts reach the row's count says stop at the row's end", function()
-    scene(67, false)
+    scene(73, false)
     open()
     local row = mainRows()[1]
     GT.Pick(row)
@@ -180,7 +181,7 @@ T.test("a version 2 plan holding Bolt of Woolen Cloth 67-73 x138 is solved afres
     open()
     local rows = mainRows()
     print(("PREPPOINTS|v2 67-73|%s|%s"):format(text(rows[1]), text(rows[2])))
-    T.eq(text(rows[1]), "Bolt of Woolen Cloth 67-85 x53", "the stale bolt row gave way")
+    T.eq(text(rows[1]), "Reinforced Linen Cape 67-73 x9", "the stale bolt row gave way")
     local c = CP.charDB.committed[TAILOR][ctx]
     T.eq(c and c.version, CP.Plan.COMMIT_VERSION, "saved again at the current version")
     CraftWorld.Close()

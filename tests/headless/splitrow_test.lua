@@ -1,9 +1,9 @@
 -- One recipe's run is one guide row (SPLITROW-01). Owner, `/proflost preview tailoring 50`: the
 -- guide listed "Woolen Cape 73-75" then "Woolen Cape 75-97". The plan cuts a step at a rank's
--- cap (Guide.SplitAtCaps), but Journeyman rides the trainer visit at 67, so nothing stands at 75.
+-- cap (Guide.SplitAtCaps), but Journeyman rides the trainer visit at 73, so nothing stands at 75.
 -- Guide.JoinRuns draws the two parts as one row; a stop row between them, the current row, a
 -- locked step and a step with "or" rows keep theirs. Since decision 0008 the run that crosses 75 is
--- Bolt of Woolen Cloth 67-85, made for the capes and shoulders after it.
+-- Bolt of Woolen Cloth 73-84, made for the capes and shoulders after it.
 
 local CP = ProfLost
 local GT = CP.GuideTab
@@ -65,24 +65,24 @@ T.test("the owner's case: Tailoring 50, the run through 75 is one row", function
     scene(50)
     local text = layout()
     print("SPLITROW|tailoring 50|" .. text)
-    T.ok(text:find("rank Journeyman Tailoring; train 67", 1, true) ~= nil, "Journeyman rides the visit at 67: " .. text)
+    T.ok(text:find("rank Journeyman Tailoring; train 73", 1, true) ~= nil, "Journeyman rides the visit at 73: " .. text)
     local bolts = rowsOf(BOLT)
     T.eq(#bolts, 1, "one Bolt of Woolen Cloth row: " .. text)
-    T.eq(bolts[1] and bolts[1].from, 67)
-    T.eq(bolts[1] and bolts[1].to, 85)
+    T.eq(bolts[1] and bolts[1].from, 73)
+    T.eq(bolts[1] and bolts[1].to, 84)
     T.ok(bolts[1] and bolts[1].keep and bolts[1].crafts >= bolts[1].keep.count, "the count covers what later steps keep")
     T.eq(#rowsOf(CAPE), 1, "one Woolen Cape row: " .. text)
     T.eq(#splits(GT.ui.rows), 0, table.concat(splits(GT.ui.rows), "; "))
 end)
 
-T.test("the plan itself keeps the bolt run whole while Journeyman rides the visit at 67", function()
+T.test("the plan itself keeps the bolt run whole while Journeyman rides the visit at 73", function()
     scene(50)
     local live = CP.Plan.Current()
     local bolts = {}
     for _, st in ipairs(live.plan) do
         if st.spell == BOLT then bolts[#bolts + 1] = ("%d-%d"):format(st.from, st.to) end
     end
-    T.eq(table.concat(bolts, ", "), "67-85", "one Bolt of Woolen Cloth step")
+    T.eq(table.concat(bolts, ", "), "73-84", "one Bolt of Woolen Cloth step")
 end)
 
 T.test("with no trainer visit before the cap, the step is cut there and the rank sits between", function()
@@ -90,7 +90,7 @@ T.test("with no trainer visit before the cap, the step is cut there and the rank
     local text = layout()
     print("SPLITROW|tailoring 74|" .. text)
     -- The part that ends at grey keeps the surplus (decision 0008, rule 3).
-    T.ok(text:find("Bolt of Woolen Cloth 74-75 x2; rank Journeyman Tailoring; Bolt of Woolen Cloth 75-85 x44", 1, true) ~= nil, text)
+    T.ok(text:find("Bolt of Woolen Cloth 74-75 x2; rank Journeyman Tailoring; Bolt of Woolen Cloth 75-84 x29", 1, true) ~= nil, text)
 end)
 
 T.test("SplitAtCaps: a rank on a trainer visit before its cap cuts nothing; without the solve's known set it cuts", function()
@@ -145,7 +145,7 @@ T.test("a picked joined row's card counts the whole run", function()
     local live = CP.Plan.Current()
     local sel = GT.Selected(live, true)
     T.eq(sel and sel.spell, BOLT)
-    T.eq(sel and sel.to, 85)
+    T.eq(sel and sel.to, 84)
     T.eq(sel and sel.crafts, bolt.crafts)
 end)
 
@@ -166,15 +166,15 @@ local function savedCut(bags)
 end
 
 T.test("a saved plan's old cut shows as one row", function()
-    T.eq(savedCut(), "67-75, 75-85", "the saved plan holds the cut")
+    T.eq(savedCut(), "73-75, 75-84", "the saved plan holds the cut")
     local bolts = rowsOf(BOLT)
     T.eq(#bolts, 1, "one row: " .. layout())
-    T.eq(bolts[1] and ("%d-%d"):format(bolts[1].from, bolts[1].to), "67-85")
+    T.eq(bolts[1] and ("%d-%d"):format(bolts[1].from, bolts[1].to), "73-84")
 end)
 
 T.test("a locked part of a saved cut keeps its row", function()
     -- Wool Cloth in the bags starts the first bolt step (decision 0007), which locks it.
-    T.eq(savedCut({ [WOOL] = 6 }), "67-75, 75-85", "the saved plan holds the cut")
+    T.eq(savedCut({ [WOOL] = 6 }), "73-75, 75-84", "the saved plan holds the cut")
     local text = layout()
     print("SPLITROW|tailoring 50, 2 bolts, saved cut|" .. text)
     local c = CP.Plan.Committed(TAILORING)
@@ -183,8 +183,8 @@ T.test("a locked part of a saved cut keeps its row", function()
     for i in pairs(locks) do
         if c.steps[i][3] == BOLT then locked = ("%d-%d"):format(c.steps[i][1], c.steps[i][2]) end
     end
-    T.eq(locked, "67-75", "the first part is locked")
-    T.ok(text:find("Bolt of Woolen Cloth 67%-75 x%d+; Bolt of Woolen Cloth 75%-85") ~= nil, "both rows stay: " .. text)
+    T.eq(locked, "73-75", "the first part is locked")
+    T.ok(text:find("Bolt of Woolen Cloth 73%-75 x%d+; Bolt of Woolen Cloth 75%-84") ~= nil, "both rows stay: " .. text)
 end)
 
 local function step(spell, from, to, crafts, extra)

@@ -8,7 +8,7 @@ local CP = ProfLost
 local GT = CP.GuideTab
 local LW, TAILOR, ENCHANTING = 165, 197, 333
 local KIT, HEAVY, HEAVY_HIDE = 3780, 4234, 4235
-local LINEN, LINEN_CAPE = 2589, 2397
+local LINEN, LINEN_BOLT = 2589, 2963
 
 local function scene(leather)
     MapWorld.begin({ zone = 1411, level = 30, side = "Horde" })
@@ -164,21 +164,22 @@ local function mainSteps(live)
 end
 
 T.test("a coupled profession's change never lands on the locked step", function()
-    -- At 49 Bolt of Linen Cloth is past its points (decision 0008 puts the bolts first below that), so
-    -- the current step is one Enchanting's credit picked.
-    tailorWithEnchanting(49)
+    -- At 1 Enchanting's credit sets how far Bolt of Linen Cloth runs (1-45; without the credit 1-41),
+    -- so the current step is one the credit shaped.
+    tailorWithEnchanting(1)
     local first = mainSteps(CP.Plan.Current())[1]
-    T.eq(first.spell, LINEN_CAPE, "Reinforced Linen Cape, picked for Enchanting, is the current step")
+    T.eq(first.spell, LINEN_BOLT, "Bolt of Linen Cloth is the current step")
     local was = ("%d %d-%d x%d"):format(first.spell, first.from, first.to, CP.Plan.StepCrafts(first))
-    -- Enchanting needs nothing now: its credit no longer cheapens the gloves.
+    -- Enchanting needs nothing now: its credit no longer stretches the bolts.
     World.set(CP.Shared, "EnchantingNeeds", function() return {}, "", nil end)
     CP.Plan.Invalidate()
     local now = mainSteps(CP.Plan.Current())[1]
-    T.eq(("%d %d-%d x%d"):format(now.spell, now.from, now.to, CP.Plan.StepCrafts(now)), was, "the gloves step holds")
-    -- Without the hold the same solve drops the gloves: the lock is what kept them.
+    T.eq(("%d %d-%d x%d"):format(now.spell, now.from, now.to, CP.Plan.StepCrafts(now)), was, "the bolt step holds")
+    -- Without the hold the same solve shortens the bolts: the lock is what kept them.
     World.set(CP.Plan, "Hold", function() return nil, {} end)
     CP.Plan.Invalidate()
-    T.ok(mainSteps(CP.Plan.Current())[1].spell ~= LINEN_CAPE, "a free solve would have moved the step")
+    local free = mainSteps(CP.Plan.Current())[1]
+    T.ok(("%d %d-%d x%d"):format(free.spell, free.from, free.to, CP.Plan.StepCrafts(free)) ~= was, "a free solve would have moved the step")
     CraftWorld.Close()
 end)
 
