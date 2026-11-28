@@ -375,7 +375,8 @@ end
 
 -- Smelting: Mining's recipes (GatherData.smelt) ------------------------------------
 
--- The smelts that make `item`: { { spell, r = recipe } }, lowest learn first, or nil.
+-- The smelts that make `item`: { { spell, r = recipe } } in no set order, or nil. Every item has
+-- one in the data; Farm.Smelts asks whether any of them serves.
 function Farm.SmeltsOf(item)
     if not smeltsBy then
         smeltsBy = {}
@@ -383,13 +384,6 @@ function Farm.SmeltsOf(item)
             local list = smeltsBy[r.makes] or {}
             smeltsBy[r.makes] = list
             list[#list + 1] = { spell = spell, r = r }
-        end
-        for _, list in pairs(smeltsBy) do
-            table.sort(list, function(a, b)
-                local la, lb = a.r.learn or math.huge, b.r.learn or math.huge
-                if la ~= lb then return la < lb end
-                return a.spell < b.spell
-            end)
         end
     end
     return smeltsBy[item]
