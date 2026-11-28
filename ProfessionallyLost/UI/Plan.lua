@@ -1029,8 +1029,9 @@ end
 -- as it stands. Returns true while that wait lasts. A current plan saved before the reach rule (no `reach`
 -- mark) is checked once too, at `skill`: one that leans on a gathered material out of reach gives up its
 -- unlocked steps the same way. A plan with no `costfix` mark was picked before Level-as-you-go costed a
--- gathered material by its own loot chance: it is solved afresh once, its current step too (`c.resolve`,
--- build). Any change goes with the last plan's memo.
+-- gathered material by its own loot chance: under Level-as-you-go it is solved afresh once, its current
+-- step too (`c.resolve`, build); a Buy-and-power-level plan is only marked. Any change goes with the last
+-- plan's memo.
 local function upgrade(id, guide, learned, skill)
     local all, dropped = committedFor(id), false
     local skills = CP.Sourcing.PlayerSkills()
@@ -1063,8 +1064,12 @@ local function upgrade(id, guide, learned, skill)
             c.reach = true
         end
         if all[ctx] and c.version == Plan.COMMIT_VERSION and not c.costfix and not pending and not unranked then
-            c.resolve, c.costfix = true, true
-            dropped = true
+            -- The cost fix changed Level-as-you-go only; a Buy-and-power-level plan is just marked.
+            if tostring(ctx):find("collect=true", 1, true) then
+                c.resolve = true
+                dropped = true
+            end
+            c.costfix = true
         end
     end
     if dropped then
