@@ -116,8 +116,8 @@ T.test("Enchanting's needs are part of a gear guide's shut-plan key", function()
     T.eq(CP.Plan.CreditKey(TAILOR), "", "Plan for Enchanting off: no credit")
 end)
 
--- Version 5: a version 4 plan that took the credit may have been made without it, so it is solved
--- afresh once; a version 4 plan without Enchanting is kept as it stands.
+-- Version 5: a version 4 plan that took the credit may have been made without it, so its steps after
+-- the locked ones are solved afresh once; a version 4 plan without Enchanting is kept as it stands.
 local function savedAs4(line)
     open(line)
     local ctx = CP.Plan.Context(line)
@@ -130,10 +130,10 @@ local function savedAs4(line)
     return CP.charDB.committed[line][ctx], (CP.Plan.Dropped[line] or 0) - dropped
 end
 
-T.test("a version 4 Tailoring plan is solved afresh with Enchanting, kept without it", function()
+T.test("a version 4 Tailoring plan re-plans past its locked steps with Enchanting, is kept without it", function()
     character(TAILOR)
     local c, dropped = savedAs4(TAILOR)
-    T.eq(dropped, 1, "with Enchanting: dropped once")
+    T.eq(dropped, 1, "with Enchanting: its unlocked steps given up once")
     T.eq(c and c.version, 5, "solved again at version 5")
 
     MapWorld.begin({ zone = DUROTAR, level = 5, side = "Horde" })
@@ -231,7 +231,8 @@ T.test("reading Enchanting's needs on a character with nothing saved saves nothi
 end)
 
 -- The version 5 check needs the skill list: a solve before it lists the profession holds a version 4
--- plan as it stands and decides later; once it is read, the plan that took the credit is dropped once.
+-- plan as it stands and decides later; once it is read, the plan that took the credit keeps its locked
+-- steps and gives up the rest once (`replan`).
 local function hold(live)
     return CP.Plan.Hold(live.prof, live.guide, live.learned, live.dead)
 end
@@ -250,18 +251,20 @@ T.test("a version 4 plan waits for the skill list before the version 5 check", f
     T.eq(saved.version, 4, "and keeps its version")
     T.eq((CP.Plan.Dropped[TAILOR] or 0) - dropped, 0, "not dropped yet")
     World.set(CP.Sourcing, "PlayerSkills", skills)
-    T.eq(hold(live), nil, "skills read: nothing held")
-    T.eq((CP.Plan.Dropped[TAILOR] or 0) - dropped, 1, "dropped once")
-    T.eq(CP.charDB.committed[TAILOR][ctx], nil, "gone from the saved plans")
+    c = hold(live)
+    T.ok(c == saved and c.replan, "skills read: held, its unlocked steps given up")
+    T.eq(saved.version, 5, "re-marked version 5")
+    T.eq((CP.Plan.Dropped[TAILOR] or 0) - dropped, 1, "given up once")
 end)
 
-T.test("a version 4 plan checked with the skill list read is dropped at once, and only once", function()
+T.test("a version 4 plan checked with the skill list read gives up its unlocked steps at once, and only once", function()
     character(TAILOR)
     local live = open(TAILOR)
     local ctx = CP.Plan.Context(TAILOR)
     CP.charDB.committed[TAILOR][ctx].version = 4
     local dropped = CP.Plan.Dropped[TAILOR] or 0
-    T.eq(hold(live), nil, "dropped")
-    T.eq(hold(live), nil, "nothing to hold")
-    T.eq((CP.Plan.Dropped[TAILOR] or 0) - dropped, 1, "dropped once")
+    local c = hold(live)
+    T.ok(c and c.replan and c.version == 5, "held at version 5, its unlocked steps given up")
+    T.ok(hold(live) == c, "the next hold checks nothing again")
+    T.eq((CP.Plan.Dropped[TAILOR] or 0) - dropped, 1, "given up once")
 end)

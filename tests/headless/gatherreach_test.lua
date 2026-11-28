@@ -85,15 +85,21 @@ T.test("a gathering skill-up that crosses a source's need moves the plan's key; 
     T.ok(CP.Plan.ReachKey(guide) ~= at160, "Green Whelp Scale comes in at 170")
 end)
 
-T.test("a saved plan from before the reach rule that leans on the scale is dropped once", function()
+-- The current step holds (decision 0007 rule 1); the reach rule applies from the next step.
+T.test("a saved plan from before the reach rule keeps its current step and gives up the later scale step", function()
     character(165, 38)
     local ctx = CP.Plan.Context(LW)
     World.set(CP.charDB, "committed", { [LW] = { [ctx] = { version = CP.Plan.COMMIT_VERSION, ctx = ctx, skill = 165,
-        shown = true, steps = { { 165, 175, BRACERS, nil, 10, nil, nil, nil, 10 } } } } })
+        shown = true, steps = { { 165, 175, BRACERS, nil, 10, nil, nil, nil, 10 },
+                                { 175, 185, BRACERS, nil, 10, nil, nil, nil, 10 } } } } })
     World.set(CP.charDB, "lastPlan", nil)
-    local list = rows()
-    for _, r in ipairs(list) do
-        T.ok(not (r.row.spell == BRACERS and not r.row.side), "the saved Green Whelp Bracers step is gone")
+    local main = {}
+    for _, r in ipairs(rows()) do
+        if r.row.spell and not r.row.side and not (r.row.rank or r.row.train) then main[#main + 1] = r.row end
+    end
+    T.eq(main[1] and ("%d %d-%d"):format(main[1].spell, main[1].from, main[1].to), "9202 165-175", "the current step holds")
+    for i = 2, #main do
+        T.ok(main[i].spell ~= BRACERS, ("the later Green Whelp Bracers step is gone (%d-%d)"):format(main[i].from, main[i].to))
     end
     local c = CP.charDB.committed and CP.charDB.committed[LW] and CP.charDB.committed[LW][ctx]
     T.ok(c and c.reach, "the plan saved in its place carries the reach mark")

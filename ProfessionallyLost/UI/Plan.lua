@@ -984,7 +984,8 @@ function Plan.Stale(guide, steps, learned)
     return false
 end
 
--- Version 2, 3 and 4 contexts dropped by the one-time check, per profession (the simulator's `locked` reads it).
+-- Contexts an upgrade dropped or re-planned past their locked steps (Plan.Hold), per profession (the
+-- simulator's `locked` reads it).
 Plan.Dropped = {}
 
 -- True when a plan of guide `id` saved under settings `ctx` priced its crafts with Enchanting's
@@ -1010,14 +1011,16 @@ local function outOfReach(guide, c, skill, learned)
     return false
 end
 
--- Each version 2, 3 or 4 saved plan of profession `id`, checked once. Before version 5 the credit read
--- Enchanting's needs as last saved, so a plan that took it may have been made without it: that plan is
--- dropped. Otherwise a version 4 plan is re-marked as the current version, and a version 2 or 3 plan is
--- re-marked when it obeys decision 0008 rule 1. A dropped plan goes with the last plan's memo, so the next
--- solve starts afresh. The credit question needs the skill list: until it lists profession `id`, a plan
--- that obeys rule 1 keeps its version and is held as it stands. Returns true while that wait lasts.
--- A current plan saved before the reach rule (no `reach` mark) is checked once too, at `skill`: one
--- that leans on a gathered material out of reach is dropped, else it is marked.
+-- Each version 2, 3 or 4 saved plan of profession `id`, checked once. A version 2 or 3 plan with a row
+-- that breaks decision 0008 rule 1 can't be done as saved: it is dropped whole (0008 rule 4). Every other
+-- plan is re-marked as the current version. Before version 5 the credit read Enchanting's needs as last
+-- saved, so a plan that took it may have been made without it: that plan keeps its locked steps and gives
+-- up the rest (`c.replan`), so the steps after the locked ones are solved afresh (decision 0007 rule 1;
+-- owner, 2026-11-27: "It should take over after their next completed step"). The credit question needs
+-- the skill list: until it lists profession `id`, a plan that obeys rule 1 keeps its version and is held
+-- as it stands. Returns true while that wait lasts. A current plan saved before the reach rule (no `reach`
+-- mark) is checked once too, at `skill`: one that leans on a gathered material out of reach gives up its
+-- unlocked steps the same way. Either change goes with the last plan's memo.
 local function upgrade(id, guide, learned, skill)
     local all, dropped = committedFor(id), false
     local skills = CP.Sourcing.PlayerSkills()
@@ -1031,22 +1034,23 @@ local function upgrade(id, guide, learned, skill)
         local v = c.version
         if v == 2 or v == 3 or v == 4 then
             local clean = c.steps and (v == 4 or not Plan.Stale(guide, c.steps, learned))
-            if clean and pending then
-                -- Decided once the skill list is read.
-            elseif clean and not tookCredit(id, guide, tostring(ctx), skills) then
-                c.version = Plan.COMMIT_VERSION
-            else
+            if not clean then
                 all[ctx] = nil
                 dropped = true
+            elseif not pending then
+                c.version = Plan.COMMIT_VERSION
+                if tookCredit(id, guide, tostring(ctx), skills) then
+                    c.replan = true
+                    dropped = true
+                end
             end
         end
         if all[ctx] and c.version == Plan.COMMIT_VERSION and not c.reach and not pending and not unranked then
             if tostring(ctx):find("collect=true", 1, true) and CP.db.collect and outOfReach(guide, c, skill, learned) then
-                all[ctx] = nil
+                c.replan = true
                 dropped = true
-            else
-                c.reach = true
             end
+            c.reach = true
         end
     end
     if dropped then
@@ -1067,7 +1071,8 @@ end
 
 -- The plan profession `p` shows. `plan` (and its `plain` twin) are the solve made around
 -- `c`'s locked steps (Plan.Hold), `costs` its per-craft costs. The new unlocked steps replace
--- the shown ones when Plan.Better says so; a limited pattern then takes in the step before it
+-- the shown ones when Plan.Better says so, or always when an upgrade gave them up (`c.replan`);
+-- a limited pattern then takes in the step before it
 -- (Plan.LimitedOrs, never across a locked step). Returns the plan as shown, its plain twin and
 -- its "or" rows when they were found here (else nil).
 function Plan.Commit(guide, p, learned, dead, plan, plain, costs, c, locks, base)
@@ -1075,7 +1080,7 @@ function Plan.Commit(guide, p, learned, dead, plan, plain, costs, c, locks, base
     local ctx = Plan.Context(p.id)
     local skill = p.skill
     local candidate = c and merge(guide, plan, c, locks, skill) or plan
-    local take = not c or Plan.Better(guide, thaw(c.steps, skill, nil, locks), candidate, skill, costs, dead, learned)
+    local take = not c or c.replan or Plan.Better(guide, thaw(c.steps, skill, nil, locks), candidate, skill, costs, dead, learned)
     local ors
     local invested = {}
     for i in pairs(c and locks or {}) do invested[Plan.StepKey(c.steps[i])] = true end

@@ -5,7 +5,8 @@
 --   * a row locked at the last look and still locked now keeps its recipe, range and count; the
 --     current one counts down by the crafts of it (once they run out, its rest is counted again);
 --   * when the unlocked rows changed, the rows that changed cost at least Plan.BETTER_BY less than
---     the ones they replaced at this look's costs (Plan.RouteCost), unless those can't be done;
+--     the ones they replaced at this look's costs (Plan.RouteCost), unless those can't be done or
+--     an upgrade gave them up (Plan.Dropped); the locked rows hold through an upgrade too;
 --   * a plan setting turned between the two looks lifts both: it is the player asking.
 -- Locked, read from the rows and the world's bags and bank: the current row (the first main row), the
 -- earliest row from it whose recipe uses a held material (its reagents, and what a reagent the guide
@@ -79,19 +80,10 @@ local function heldOf(ctx, guide, rows)
 end
 
 -- The rows of `rows` locked at `skill` with the world's bags as they are: a set of indexes.
--- `version` is the saved plan's: a version 2 or 3 plan whose rows break decision 0008 rule 1
--- (CP.Plan.Stale) is solved afresh, so none of its rows is locked.
 -- ctx: CP, guide, held(item).
--- @rule[LockSet] self: a row is doable by the addon's Plan.Stale, Guide.Chance and VendorWatch.IsSoldOut
-function Rules.LockSet(ctx, rows, skill, dead, version)
+-- @rule[LockSet] self: a row is doable by the addon's Guide.Chance and VendorWatch.IsSoldOut
+function Rules.LockSet(ctx, rows, skill, dead)
     local CP, guide = ctx.CP, ctx.guide
-    if version == 2 or version == 3 then
-        local steps = {}
-        for i, row in ipairs(rows) do
-            steps[i] = { row.from, row.to, row.spell, nil, row.crafts, row.keep and row.keep.count, nil, nil, row.crafts }
-        end
-        if CP.Plan.Stale(guide, steps) then return {} end
-    end
     local function doable(row)
         local from = math.max(row.from, skill)
         local r = row.recipe
@@ -151,27 +143,26 @@ function Rules.Locked(ctx)
     if not cur then st.last = nil return out end
     local skill = live.prof.skill
     local alias = live.alias and live.alias[cur.spell]
-    local saved = CP.Plan.Committed(line)
-    local version = saved and saved.version
     local lockCtx = { CP = CP, guide = guide, held = ctx.held }
-    local look = { line = line, skill = skill, rows = rows, ctx = Rules.PlanSettings(ctx), version = version,
+    local look = { line = line, skill = skill, rows = rows, ctx = Rules.PlanSettings(ctx),
                    dropped = CP.Plan.Dropped[line] or 0,
-                   locks = Rules.LockSet(lockCtx, rows, skill, live.dead, version), held = heldOf(ctx, guide, rows),
+                   locks = Rules.LockSet(lockCtx, rows, skill, live.dead), held = heldOf(ctx, guide, rows),
                    needs = needsKey(CP),
                    cur = { spell = cur.spell, to = cur.to, crafts = cur.crafts }, alias = alias,
                    castsOf = castsOf(cur.spell, alias), castsAll = {} }
     for spell, n in pairs(casts) do look.castsAll[spell] = n end
     local last = st.last
-    -- A version 2 or 3 plan dropped under decision 0008 rule 4 is a route that can't be done: it gives way whole.
-    if last and last.line == line and last.dropped ~= look.dropped then
-        st.changes = st.changes + 1
-    elseif last and last.line == line and last.ctx == look.ctx then
+    -- An upgrade that gave up the unlocked steps (Plan.Dropped) marks a route that can't be done: those
+    -- steps give way whole, and the locked ones still hold. A plan the upgrade drops whole (decision 0008
+    -- rule 4) is dropped before any look shows it.
+    local gaveUp = last and last.dropped ~= look.dropped
+    if last and last.line == line and last.ctx == look.ctx then
         local why = {}
         if heldOf(ctx, guide, last.rows) ~= last.held then why[#why + 1] = "the bags changed" end
         if look.needs ~= last.needs then why[#why + 1] = "Enchanting's needs changed" end
         if skill ~= last.skill then why[#why + 1] = ("the skill went %d -> %d"):format(last.skill, skill) end
         local since = #why > 0 and table.concat(why, ", ") or "nothing the check reads"
-        local still = Rules.LockSet(lockCtx, last.rows, skill, live.dead, last.version)
+        local still = Rules.LockSet(lockCtx, last.rows, skill, live.dead)
         -- Crafts of `spell` since the last look, the player's own spell for it too.
         local function madeOf(spell)
             local own = live.alias and live.alias[spell]
@@ -242,7 +233,7 @@ function Rules.Locked(ctx)
             -- skill points, or cost at least BETTER_BY more.
             local was, wasPoints = CP.Plan.RouteCost(guide, gone, skill, live.costs, live.dead, live.learned)
             local now, nowPoints = CP.Plan.RouteCost(guide, new, skill, live.costs, live.dead, live.learned)
-            local allowed = not was or wasPoints ~= nowPoints or (now and now <= was * (1 - CP.Plan.BETTER_BY))
+            local allowed = gaveUp or not was or wasPoints ~= nowPoints or (now and now <= was * (1 - CP.Plan.BETTER_BY))
             if not allowed then
                 local a, b = {}, {}
                 for _, r in ipairs(gone) do a[#a + 1] = rowText(r) end

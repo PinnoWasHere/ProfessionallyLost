@@ -743,9 +743,11 @@ local function solve(guide, skill, learned, priceFn, allow, prefer, held, opts, 
     -- else the step after, when that recipe still gives points there: nobody buys a
     -- pattern or farms a rare drop for one craft.
     -- A neighbour carries a short run only where it is no greener than the run's own pick.
-    local function carries(id, from, to)
+    -- A locked step's recipe the filter drops (`at` is its point) stays inside its lock.
+    local function carries(id, from, to, at)
         local r = id and guide.recipes[id]
         if not (r and usable[id]) or chained(id) then return false end
+        if fixed[at] and not allowed[id] then return false end
         local own = guide.recipes[picks[from]]
         for k = from, to - 1 do
             if not (learned[id] or r.learn <= k) or G.Chance(r, k) <= 0 then return false end
@@ -762,7 +764,7 @@ local function solve(guide, skill, learned, priceFn, allow, prefer, held, opts, 
         local holding = (s1 == skill and holdEnd > skill) or fixed[s1] ~= nil
         if id and e - s1 < Solver.MIN_RUN and not chained(id) and not holding then
             local before, after = s1 > skill and picks[s1 - 1] or nil, e < cap and picks[e] or nil
-            local into = (carries(before, s1, e) and before) or (carries(after, s1, e) and after) or nil
+            local into = (carries(before, s1, e, s1 - 1) and before) or (carries(after, s1, e, e) and after) or nil
             if into then
                 for k = s1, e - 1 do picks[k] = into end
             end
