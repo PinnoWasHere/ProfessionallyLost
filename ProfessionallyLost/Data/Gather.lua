@@ -36,6 +36,10 @@ if CP.stopped then return end
 --          at: Fishing skill it's learnable from), npcs = { [entry] = { name, side, spawns } }
 -- ranks: skillLine -> { { skill = cap it lifts, level = player level, npcs } } for Herbalism, Mining,
 --        Skinning; rankNpcs: [entry] = { name, side, spawns }
+-- smelt: Mining's recipes, spell -> { name, makes, yield (when over 1), learn (Mining skill; none when
+--        no source places it), yellow, grey, src (auto, trainer, quest or unknown), reagents = { { item,
+--        count } }, buy (reagents vendors sell without limit), quest and level (the quest to finish first
+--        and its level), fee, npcs (who teaches it) }
 -- packed: loot, mobs and zones ship as one table constructor string per key, decoded on first
 --         read (the code at the end). A zone keeps map, w, h, lvl, inst and fish plain, plus
 --         has = " m<entry> ... n<entry> ", the creatures and nodes it holds.
@@ -286,6 +290,25 @@ CP.GatherData = {
     [8146] = { "Ruw", "H", { { 1, -4374.4, 161.1 } } },
     [12025] = { "Malvor", "N", { { 1, 7768.6, -2429.7 } } },
     [12030] = { "Malux", "H", { { 1, -1638.0, 3188.7 } } },
+  },
+  smelt = {
+    [2657] = { name = "Smelt Copper", makes = 2840, learn = 1, yellow = 25, grey = 70, src = "auto", reagents = { { 2770, 1 } } },
+    [2658] = { name = "Smelt Silver", makes = 2842, learn = 75, yellow = 100, grey = 125, src = "trainer", reagents = { { 2775, 1 } }, fee = 180, npcs = { 1681, 1701, 3001, 3137, 3175, 3357, 3555, 4254, 4598, 5392, 5513, 6297, 8128 } },
+    [2659] = { name = "Smelt Bronze", makes = 2841, yield = 2, learn = 65, yellow = 65, grey = 115, src = "trainer", reagents = { { 2840, 1 }, { 3576, 1 } }, fee = 200, npcs = { 1681, 1701, 3001, 3137, 3175, 3357, 3555, 4254, 4598, 5392, 5513, 6297, 8128 } },
+    [3304] = { name = "Smelt Tin", makes = 3576, learn = 65, yellow = 50, grey = 75, src = "trainer", reagents = { { 2771, 1 } }, fee = 50, npcs = { 1681, 1701, 3001, 3137, 3175, 3357, 3555, 4254, 4598, 5392, 5513, 6297, 8128 } },
+    [3307] = { name = "Smelt Iron", makes = 3575, learn = 125, yellow = 130, grey = 140, src = "trainer", reagents = { { 2772, 1 } }, fee = 450, npcs = { 1681, 1701, 3001, 3137, 3175, 3357, 3555, 4254, 4598, 5392, 5513, 6297, 8128 } },
+    [3308] = { name = "Smelt Gold", makes = 3577, learn = 155, yellow = 170, grey = 185, src = "trainer", reagents = { { 2776, 1 } }, fee = 2250, npcs = { 1681, 1701, 3001, 3137, 3175, 3357, 3555, 4254, 4598, 5392, 5513, 6297, 8128 } },
+    [3569] = { name = "Smelt Steel", makes = 3859, learn = 165, yellow = 165, grey = 165, src = "trainer", reagents = { { 3575, 1 }, { 3857, 1 } }, buy = { 3857 }, fee = 2250, npcs = { 1681, 1701, 3001, 3137, 3175, 3357, 3555, 4254, 4598, 5392, 5513, 6297, 8128 } },
+    [10097] = { name = "Smelt Mithril", makes = 3860, learn = 175, yellow = 175, grey = 175, src = "trainer", reagents = { { 3858, 1 } }, fee = 4500, npcs = { 1681, 1701, 3001, 3137, 3175, 3357, 3555, 4254, 4598, 5392, 5513, 6297, 8128 } },
+    [10098] = { name = "Smelt Truesilver", makes = 6037, learn = 230, yellow = 230, grey = 230, src = "trainer", reagents = { { 7911, 1 } }, fee = 9000, npcs = { 1681, 1701, 3001, 3137, 3175, 3357, 3555, 4254, 4598, 5392, 5513, 6297, 8128 } },
+    [14891] = { name = "Smelt Dark Iron", makes = 11371, learn = 230, yellow = 230, grey = 230, src = "quest", reagents = { { 11370, 8 } }, quest = 4083, level = 40, npcs = { 9037 } },
+    [16153] = { name = "Smelt Thorium", makes = 12359, learn = 250, yellow = 250, grey = 250, src = "trainer", reagents = { { 10620, 1 } }, fee = 18000, npcs = { 1681, 1701, 3001, 3137, 3175, 3357, 3555, 4254, 4598, 5392, 5513, 6297, 8128 } },
+    [22967] = { name = "Smelt Elementium", makes = 17771, yellow = 310, grey = 320, src = "unknown", reagents = { { 18562, 1 }, { 12360, 10 }, { 17010, 1 }, { 18567, 3 } }, buy = { 18567 } },
+    [1230161] = { name = "Lodestone", makes = 279960, learn = 20, yellow = 20, grey = 20, src = "trainer", reagents = { { 2835, 1 }, { 2840, 1 } }, npcs = { 6297 } },
+    [1249637] = { name = "Smelt Azerothium", makes = 249726, learn = 275, yellow = 275, grey = 275, src = "trainer", reagents = { { 249426, 2 }, { 3857, 1 } }, buy = { 3857, 249426 }, npcs = { 6297 } },
+    [1262975] = { name = "Rock Garden", makes = 279948, yellow = 140, grey = 140, src = "unknown", reagents = { { 2838, 2 }, { 2772, 1 }, { 2842, 1 } } },
+    [1263071] = { name = "Molten Foundry", makes = 279952, yellow = 300, grey = 300, src = "unknown", reagents = { { 12359, 5 }, { 12365, 2 }, { 6037, 1 } } },
+    [1306126] = { name = "Smelt Heavy Thorium", makes = 251291, learn = 300, yellow = 300, grey = 315, src = "trainer", reagents = { { 248815, 1 } }, npcs = { 6297 } },
   },
   packed = {
     loot = {

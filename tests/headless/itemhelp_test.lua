@@ -59,6 +59,49 @@ T.test("an item tooltip says what the guides need, what's held, and where to far
     end)
 end)
 
+-- A player with Mining and Blacksmithing (Discord, owner approved 2026-11-27): "If I mouse over a bar the
+-- tooltip might say I have 30 and still need 70. When I mouse over the equivalent ore it should show I
+-- still need 70 bars." Smelt Iron takes 1 Iron Ore a bar, Smelt Bronze 1 Copper Bar and 1 Tin Bar for 2
+-- Bronze Bars, Smelt Dark Iron 8 Dark Iron Ore a bar (client SpellReagents and SpellEffect).
+T.test("an ore's tooltip says what the guides still need of the bar it smelts into", function()
+    local IRON_ORE, IRON_BAR, COPPER_ORE, COPPER_BAR, BRONZE_BAR = 2772, 3575, 2770, 2840, 2841
+    local DARK_ORE, DARK_BAR, BS = 11370, 11371, 164
+    local held = { [IRON_BAR] = 30, [IRON_ORE] = 12, [COPPER_BAR] = 5 }
+    local names = { [IRON_BAR] = "Iron Bar", [COPPER_BAR] = "Copper Bar", [BRONZE_BAR] = "Bronze Bar",
+                    [DARK_BAR] = "Dark Iron Bar" }
+    withNeeds({ [BS] = { [IRON_BAR] = 100, [COPPER_BAR] = 20, [BRONZE_BAR] = 40, [DARK_BAR] = 10 } }, function()
+        local saved = { count = C_Item.GetItemCount, name = C_Item.GetItemNameByID, on = CP.db.itemTooltip }
+        C_Item.GetItemCount = function(id) return held[id] or 0 end
+        C_Item.GetItemNameByID = function(id) return names[id] end
+        local ok, err = pcall(function()
+            local lines = CP.ItemTooltip.Lines(IRON_ORE)
+            T.eq(lines[1] and lines[1][1], "Smelts into Iron Bar")
+            T.eq(lines[2] and lines[2][1], "Blacksmithing needs x100")
+            T.eq(lines[3] and lines[3][1], "Have 30 · short x70 (70 ore)", "the bars held count, the ore held does not")
+            lines = CP.ItemTooltip.Lines(COPPER_ORE)
+            T.eq(lines[1] and lines[1][1], "Smelts into Copper Bar")
+            T.eq(lines[2] and lines[2][1], "Blacksmithing needs x20")
+            T.eq(lines[3] and lines[3][1], "x20 more for Bronze Bar", "40 Bronze Bars take 20 Copper Bars")
+            T.eq(lines[4] and lines[4][1], "Have 5 · short x35 (35 ore)")
+            lines = CP.ItemTooltip.Lines(DARK_ORE)
+            T.eq(lines[3] and lines[3][1], "Have 0 · short x10 (80 ore)", "8 ore a Dark Iron Bar")
+            held[IRON_BAR] = 100
+            lines = CP.ItemTooltip.Lines(IRON_ORE)
+            T.eq(lines[3] and lines[3][1], "Have 100 · enough")
+            for _, l in ipairs(CP.ItemTooltip.Lines(COPPER_BAR)) do
+                T.ok(not l[1]:find("^Smelts into"), "a bar's own tooltip names no smelt: " .. l[1])
+            end
+            local tip = { AddLine = function() end, AddDoubleLine = function() end, Show = function() end }
+            CP.db.itemTooltip = true
+            T.ok(CP.ItemTooltip.Add(tip, IRON_ORE), "the ore's lines show")
+            CP.db.itemTooltip = false
+            T.ok(not CP.ItemTooltip.Add(tip, IRON_ORE), "Guide line in item tooltips off: none")
+        end)
+        C_Item.GetItemCount, C_Item.GetItemNameByID, CP.db.itemTooltip = saved.count, saved.name, saved.on
+        T.ok(ok, err)
+    end)
+end)
+
 T.test("bag slots holding a needed item get a mark, others don't", function()
     withNeeds({ [LW] = { [MEDIUM_LEATHER] = 10 } }, function()
         local slot = CreateFrame("Button", nil, UIParent)

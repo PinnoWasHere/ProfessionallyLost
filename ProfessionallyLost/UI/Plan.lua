@@ -498,6 +498,7 @@ function Plan.ReachKey(guide)
     local parts = {}
     for i, line in ipairs(CP.Gather.PROFS) do parts[i] = ranks[line] or 0 end
     local raw = table.concat(parts, ",") .. ":" .. tostring(level) .. ":" .. CP.Farm.Generation()
+        .. ":" .. CP.Farm.SmeltKey()
     local hit = reachSigs[guide]
     if hit and hit.raw == raw then return hit.sig end
     local reach, h, n = CP.Sourcing.Reach(ranks, level), 0, 0
