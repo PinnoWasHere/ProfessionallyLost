@@ -1791,3 +1791,209 @@ function Plan.AlternativesText(live, step)
     local lead = any and 'Limited stock. If it\'s sold out, craft an "or" row below, or ' or "Limited stock. If sold out: "
     return lead .. table.concat(names, ", ")
 end
+
+-- Cheaper "or" rows under the current step ------------------------------------------
+-- Owner, 2026-11-27: "offer the cheaper option as an or row under current step". The current step
+-- holds (decision 0007), so a recipe that has become clearly cheaper over its range shows under it as
+-- an "or" row. Picking that row switches the step (Plan.Switch); nothing else moves it.
+--   * Each recipe is priced over the step's range point by point, as the solve prices a point
+--     (Solver.RangeCost): the same prices, sharing, prep making, credit and trainer fees.
+--   * Materials in the bags, bank and mail cost nothing for the crafts they cover, for the current
+--     step's recipe too. The solve leaves them out so the guide doesn't move as the bags fill; an
+--     "or" row moves nothing until it is picked.
+--   * A recipe shows when it costs at least BETTER_BY less over the range, gives a point at each
+--     skill of it, is orange or yellow throughout, and is known or taught by a trainer.
+--   * A current step whose output later steps use (a maker, or a row that keeps) gets none: its
+--     crafts are made anyway.
+Plan.CHEAPER_MAX = 2   -- cheaper "or" rows at most under the current step
+Plan.CHEAPER_NAMES = 2 -- held materials a reason names at most
+
+Plan.CHEAPER_HELD = "Cheaper now: uses your %s"
+Plan.CHEAPER_GATHER = "Cheaper now: less to gather"
+Plan.CHEAPER_PRICE = "Cheaper now at today's prices"
+
+-- True when recipe `r` makes something later steps of `guide` use up.
+local function feeds(guide, r)
+    local m = r.makes
+    return m ~= nil and ((guide.prep or {})[m] ~= nil or (guide.craftOnly or {})[m] ~= nil)
+end
+
+-- The materials `r` reads into `out`, through the guide's prep makers.
+local function poolItems(guide, r, out, depth)
+    for _, pair in ipairs(r.reagents) do
+        out[pair[1]] = true
+        local id = guide.prep and guide.prep[pair[1]]
+        local maker = id and depth < Plan.PREP_DEPTH and guide.recipes[id]
+        if maker then poolItems(guide, maker, out, depth + 1) end
+    end
+    return out
+end
+
+-- What the plans hold back from the current step of `live`, which ends at `to`: { [item] = count }.
+-- That is what this plan's later steps use and the other guides' saved needs (Gather.Needs), a
+-- prep material counted as what it is made from too.
+local function kept(live, to)
+    local guide, out = live.guide, {}
+    local prep = guide.prep or {}
+    local function add(item, n, depth)
+        if n <= 0 then return end
+        out[item] = (out[item] or 0) + n
+        local id = prep[item]
+        local maker = id and depth < Plan.PREP_DEPTH and guide.recipes[id]
+        for _, pair in ipairs(maker and maker.reagents or {}) do add(pair[1], pair[2] * n / (maker.yield or 1), depth + 1) end
+    end
+    local all = CP.Gather.NeedsTo(live, CP.Queue.End(guide)) or {}
+    local upto = CP.Gather.NeedsTo(live, to) or {}
+    for item, n in pairs(all) do add(item, n - (upto[item] or 0), 0) end
+    for key, needs in pairs(CP.charDB and CP.charDB.gatherNeeds or {}) do
+        if CP.Guides[key] ~= guide then
+            for item, n in pairs(needs) do out[item] = (out[item] or 0) + n end
+        end
+    end
+    return out
+end
+
+-- "10 Heavy Hide" for each held material `used` took beyond what the current step's recipe took
+-- (`base`), the largest first; nil when none has a name yet.
+local function heldWords(used, base)
+    local list = {}
+    for item, n in pairs(used) do
+        local more = n - (base[item] or 0)
+        local count = math.floor(n + 1e-6)
+        local name = more >= 1 and count > 0 and C_Item.GetItemNameByID(item)
+        if name then list[#list + 1] = { item = item, more = more, text = ("%d %s"):format(count, name) } end
+    end
+    table.sort(list, function(a, b)
+        if a.more ~= b.more then return a.more > b.more end
+        return a.item < b.item
+    end)
+    local words = {}
+    for i = 1, math.min(#list, Plan.CHEAPER_NAMES) do words[i] = list[i].text end
+    return #words > 0 and table.concat(words, " and ") or nil
+end
+
+-- The current step of `live` and the recipes clearly cheaper over its range, as "or" rows:
+-- returns the step's index in `live.plan` and { { spell, recipe, learned, crafts, cheaper } }, the
+-- cheapest first. Nil when there are none. Kept on `live` while the held materials stay the same.
+function Plan.Cheaper(live)
+    local guide, p = live and live.guide, live and live.prof
+    if not (guide and p and live.plan) or live.unread then return nil end
+    local at, st
+    for i, s in ipairs(live.plan) do
+        if s.spell and s.to > p.skill then at, st = i, s break end
+    end
+    local cur = st and guide.recipes[st.spell]
+    if not cur or cur.deskill or feeds(guide, cur) or (st.keepCount or 0) > 0 then return nil end
+    local from, to = math.max(st.from, p.skill), st.to
+    local learned, dead = live.learned or {}, live.dead or {}
+
+    -- The recipes that can stand in, and the materials they read, once per plan and step.
+    local stepKey = ("%d:%d:%d"):format(st.spell, from, to)
+    local cands = live.cheaperCands
+    if not (cands and cands.key == stepKey) then
+        local allow, side = allowFor(guide, learned, dead), CP.Sourcing.Side()
+        local list = {}
+        for id, r in pairs(guide.recipes) do
+            local known = learned[id] == true
+            if id ~= st.spell and not r.deskill and (r.step or known)
+                and (known or CP.Guide.SourceWord(r) == "trainer" and r.learn <= from)
+                and to <= CP.Solver.GreenFrom(r) and to <= r.grey and CP.Guide.Chance(r, from) > 0
+                and allow(id, r) and not Plan.Locked(guide, r)
+                and (known or CP.Sourcing.CanLearn(guide, id, r, learned, side)) then
+                list[#list + 1] = id
+            end
+        end
+        table.sort(list)
+        local items = poolItems(guide, cur, {}, 0)
+        for _, id in ipairs(list) do poolItems(guide, guide.recipes[id], items, 0) end
+        cands = { key = stepKey, list = list, items = items, kept = #list > 0 and kept(live, to) or {} }
+        live.cheaperCands = cands
+    end
+    local list, items = cands.list, cands.items
+    if #list == 0 then return nil end
+
+    local held, parts = {}, {}
+    for item in pairs(items) do
+        local n = CP.Purchases.Have(item)
+        if n and n > 0 then
+            held[item] = math.max(0, n - (cands.kept[item] or 0))
+            parts[#parts + 1] = item .. "x" .. n
+        end
+    end
+    table.sort(parts)
+    local key = stepKey .. ":" .. table.concat(parts, ",")
+    local memo = live.cheaperMemo
+    if memo and memo.key == key then return memo.at, memo.out end
+
+    local opts = solverOpts(guide)
+    local rare = {}
+    if opts.rareFromStock then
+        for item, info in pairs(guide.items or {}) do
+            if info[5] == true then rare[item] = true end
+        end
+    end
+    local price = priceFor()
+    local function cost(id)
+        local r = guide.recipes[id]
+        local pool = {}
+        for item, n in pairs(held) do pool[item] = n end
+        local fee
+        if opts.fees and not learned[id] and (r.fee or 0) > 0 then
+            fee = function(s) return r.fee / math.max(1, r.grey - math.max(s, r.learn)) end
+        end
+        return CP.Solver.RangeCost(guide, r, from, to, price, pool,
+            { credit = opts.credit, rare = rare, learned = learned, fee = fee })
+    end
+
+    local out
+    local was, base = cost(st.spell)
+    if was and was > 0 then
+        local found = {}
+        for _, id in ipairs(list) do
+            local now, used = cost(id)
+            if now and now <= was * (1 - Plan.BETTER_BY) then
+                found[#found + 1] = { id = id, cost = now, used = used }
+            end
+        end
+        table.sort(found, function(a, b)
+            if a.cost ~= b.cost then return a.cost < b.cost end
+            return a.id < b.id
+        end)
+        for i = 1, math.min(#found, Plan.CHEAPER_MAX) do
+            local f = found[i]
+            local r = guide.recipes[f.id]
+            local words = heldWords(f.used, base)
+            out = out or {}
+            out[i] = { spell = f.id, recipe = r, learned = learned[f.id] == true, crafts = CP.Guide.Crafts(r, from, to),
+                       cheaper = words and Plan.CHEAPER_HELD:format(words)
+                           or CP.db.collect and Plan.CHEAPER_GATHER or Plan.CHEAPER_PRICE,
+                       cost = f.cost, was = was }
+        end
+    end
+    live.cheaperMemo = { key = key, at = out and at, out = out }
+    if not out then return nil end
+    return at, out
+end
+
+-- Picks served by Plan.Switch, per profession id (the simulator's `locked` reads it: the player asked).
+Plan.Swapped = {}
+
+-- The player picked a cheaper "or" row: the current step of profession `live.prof` becomes recipe
+-- `spell` over the rest of its range, counted from the skill. True when it changed.
+function Plan.Switch(live, spell)
+    local p, guide = live and live.prof, live and live.guide
+    local c = p and Plan.Committed(p.id)
+    local i = c and c.current
+    local f = i and c.steps and c.steps[i]
+    local r = f and guide and guide.recipes[spell]
+    if not r or f[3] == spell then return false end
+    local from = math.max(f[1], p.skill)
+    local crafts = CP.Guide.Crafts(r, from, f[2])
+    if crafts == math.huge then return false end
+    local each = live.costs and live.costs[spell]
+    c.steps[i] = { from, f[2], spell, nil, crafts, nil, nil, each and each * crafts or nil, crafts }
+    c.made, c.curKey = 0, Plan.StepKey(c.steps[i])
+    Plan.Swapped[p.id] = (Plan.Swapped[p.id] or 0) + 1
+    Plan.Invalidate()
+    return true
+end

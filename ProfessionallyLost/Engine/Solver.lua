@@ -185,6 +185,59 @@ function Solver.RouteTotal(guide, list, cost)
     return total
 end
 
+-- What recipe `r` costs from skill `from` to `to`, point by point as the solve prices a point: the
+-- materials over the skill-up chance, one bill per point (Solver.CraftCost's sharing), a prep material
+-- made from its maker, `opts.credit` as Solver.Plan's, and `opts.fee(s)` at each point. Materials in `pool`
+-- (item -> count) come first and cost nothing; the pool is used up as the points go. Returns the
+-- cost and what it took from the pool (item -> count), or nil when a point gives no skill-up, a prep
+-- maker can't be used there, or a craft-only or stock-only (`opts.rare[item]`) material runs short.
+-- `opts.learned` says which makers are known.
+function Solver.RangeCost(guide, r, from, to, priceFn, pool, opts)
+    opts = opts or {}
+    local prep, craftOnly, rare = guide.prep or {}, guide.craftOnly or {}, opts.rare or {}
+    local learned, credit = opts.learned or {}, opts.credit
+    local bill, used, total = newBill(), {}, 0
+    local function take(item, n)
+        local got = math.min(pool[item] or 0, n)
+        if got > 0 then
+            pool[item] = pool[item] - got
+            used[item] = (used[item] or 0) + got
+        end
+        return n - got
+    end
+    local function add(item, n, s, depth)
+        n = take(item, n)
+        if n <= 1e-9 then return true end
+        if craftOnly[item] or rare[item] then return false end
+        local id = prep[item]
+        local maker = id and depth < PREP_DEPTH and guide.recipes[id]
+        if maker then
+            if not (learned[id] or maker.learn <= s) then return false end
+            local runs = n / (maker.yield or 1)
+            for _, pair in ipairs(maker.reagents) do
+                if not add(pair[1], pair[2] * runs, s, depth + 1) then return false end
+            end
+            return true
+        end
+        local info = guide.items and guide.items[item]
+        local _, how = priceFn(item, info)
+        billAdd(bill, priced(priceFn, guide, item) * n, shareOf(how, info))
+        return true
+    end
+    for s = from, to - 1 do
+        local p = CP.Guide.Chance(r, s) * (r.ups or 1)
+        if p <= 0 then return nil end
+        billClear(bill)
+        for _, pair in ipairs(r.reagents) do
+            if not add(pair[1], pair[2] / p, s, 0) then return nil end
+        end
+        local c = billSum(bill)
+        if credit then c = credit(nil, r, c * p) / p end
+        total = total + c + (opts.fee and opts.fee(s) or 0)
+    end
+    return total, used
+end
+
 -- True when every material of `a` is also a material of `b`.
 local function usesOnly(a, b)
     local has = {}

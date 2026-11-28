@@ -7,7 +7,8 @@
 --   * when the unlocked rows changed, the rows that changed cost at least Plan.BETTER_BY less than
 --     the ones they replaced at this look's costs (Plan.RouteCost), unless those can't be done or
 --     an upgrade gave them up (Plan.Dropped); the locked rows hold through an upgrade too;
---   * a plan setting turned between the two looks lifts both: it is the player asking.
+--   * a plan setting turned between the two looks lifts both: it is the player asking. So does a
+--     cheaper "or" row picked (Plan.Swapped, Plan.Switch).
 -- Locked, read from the rows and the world's bags and bank: the current row (the first main row), the
 -- earliest row from it whose recipe uses a held material (its reagents, and what a reagent the guide
 -- makes is made from), and the rows that make craft-only gear a locked row uses. A row that can't be
@@ -145,7 +146,7 @@ function Rules.Locked(ctx)
     local alias = live.alias and live.alias[cur.spell]
     local lockCtx = { CP = CP, guide = guide, held = ctx.held }
     local look = { line = line, skill = skill, rows = rows, ctx = Rules.PlanSettings(ctx),
-                   dropped = CP.Plan.Dropped[line] or 0,
+                   dropped = CP.Plan.Dropped[line] or 0, swapped = CP.Plan.Swapped and CP.Plan.Swapped[line] or 0,
                    locks = Rules.LockSet(lockCtx, rows, skill, live.dead), held = heldOf(ctx, guide, rows),
                    needs = needsKey(CP),
                    cur = { spell = cur.spell, to = cur.to, crafts = cur.crafts }, alias = alias,
@@ -156,7 +157,8 @@ function Rules.Locked(ctx)
     -- steps give way whole, and the locked ones still hold. A plan the upgrade drops whole (decision 0008
     -- rule 4) is dropped before any look shows it.
     local gaveUp = last and last.dropped ~= look.dropped
-    if last and last.line == line and last.ctx == look.ctx then
+    -- A cheaper "or" row picked (Plan.Switch) is the player asking, as a setting turned is.
+    if last and last.line == line and last.ctx == look.ctx and last.swapped == look.swapped then
         local why = {}
         if heldOf(ctx, guide, last.rows) ~= last.held then why[#why + 1] = "the bags changed" end
         if look.needs ~= last.needs then why[#why + 1] = "Enchanting's needs changed" end
