@@ -183,7 +183,8 @@ T.test("item 43: a redraw draws the same pins as before, only later", function()
             return table.concat(list, "|"), #list
         end
         local before, n = spots()
-        T.ok(n > 500, "pins registered: " .. n)
+        -- "Other zones" leaves out the other faction's territory (Teldrassil, Darkshore).
+        T.ok(n > 400, "pins registered: " .. n)
         c.raise()
         CP.GatherList.RouteOnly()
         T.advance(5)

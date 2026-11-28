@@ -97,9 +97,10 @@ T.test("Follow the guide's map still draws the other zones when the setting is o
 end)
 
 -- Pins on each map in Follow the guide with other zones on. Every map holds at least that many,
--- and no other map holds any. Taken 2026-11-24, when nodes above the player's skill left the map.
+-- and no other map holds any. Taken 2026-11-24, when nodes above the player's skill left the map; the
+-- other faction's territory (Teldrassil, Darkshore) holds none.
 local FOLLOW_FLOORS = {
-    [1411] = 7, [1412] = 15, [1413] = 17, [1414] = 46, [1438] = 3, [1439] = 12, [1440] = 25, [1441] = 22,
+    [1411] = 7, [1412] = 15, [1413] = 17, [1414] = 40, [1440] = 25, [1441] = 22,
     [1442] = 16, [1443] = 14, [1444] = 3, [1445] = 22, [1448] = 19, [1452] = 10, [1454] = 3, [1456] = 3,
     [2652] = 3
 }
